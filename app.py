@@ -150,6 +150,9 @@ class PDFGuideApp(ttk.Frame):
         self.fit_mode: str | None = self.fit_pref  # "width" | "page" | None
         self._photo = None              # keep a ref so Tk doesn't GC the image
         self.filter_text = ""           # current PDF-list search filter
+        # Re-fit the page when a window resize settles (debounced).
+        self._resize_after: str | None = None
+        self._last_canvas_size = (0, 0)
         # Remembered open folders (relative paths); folders start closed unless
         # listed here.  Persisted across runs.
         saved = load_config().get("expanded_folders", [])
@@ -275,6 +278,7 @@ class PDFGuideApp(ttk.Frame):
                              command=self.canvas.xview)
         h_sb.grid(row=1, column=0, sticky="ew")
         self.canvas.config(yscrollcommand=v_sb.set, xscrollcommand=h_sb.set)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
         canvas_wrap.rowconfigure(0, weight=1)
         canvas_wrap.columnconfigure(0, weight=1)
         panes.add(right, weight=3)
@@ -794,6 +798,27 @@ class PDFGuideApp(ttk.Frame):
         self.fit_mode = self.fit_pref = mode
         update_config({"fit_pref": mode})
         self.render_page()
+
+    def _on_canvas_configure(self, event) -> None:
+        """Re-apply the active fit once a window/pane resize has settled.
+
+        <Configure> fires continuously while dragging, so debounce: reschedule
+        a one-shot render and only run it after the size stops changing.  A
+        manual (+/-) zoom has no fit mode and is left untouched."""
+        size = (event.width, event.height)
+        if size == self._last_canvas_size:
+            return
+        self._last_canvas_size = size
+        if self.doc is None or not self.fit_mode:
+            return
+        if self._resize_after is not None:
+            self.after_cancel(self._resize_after)
+        self._resize_after = self.after(150, self._refit_after_resize)
+
+    def _refit_after_resize(self) -> None:
+        self._resize_after = None
+        if self.doc is not None and self.fit_mode:
+            self.render_page()   # _apply_fit recomputes zoom for the new size
 
     def _apply_fit(self) -> None:
         """When a fit mode is active, recompute self.zoom from the current
