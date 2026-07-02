@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# PyInstaller / build outputs
+build/
+dist/
+installer/
+
+# Local editor / tool settings
+.claude/
+
+# App data: the bundled/working PDF set and generated topic files
+# (documents and build artifacts, not source)
+pdfs/
