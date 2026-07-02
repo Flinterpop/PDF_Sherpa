@@ -40,6 +40,7 @@ import re
 import shutil
 import subprocess
 import sys
+import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
@@ -175,6 +176,8 @@ class PDFSherpaApp(ttk.Frame):
                    command=self.choose_folder).pack(side="left")
         ttk.Button(toolbar, text="Refresh",
                    command=self.on_refresh_clicked).pack(side="left", padx=(4, 0))
+        ttk.Button(toolbar, text="Help",
+                   command=self.show_help).pack(side="right")
 
         self.folder_var = tk.StringVar()
         ttk.Label(toolbar, textvariable=self.folder_var,
@@ -467,6 +470,49 @@ class PDFSherpaApp(ttk.Frame):
                 "Drop PDFs",
                 f"Added {len(added)} PDF{'s' if len(added) != 1 else ''} "
                 "to the inbox.\n\nProblems:\n" + "\n".join(failed[:10]))
+
+    # -- Help -----------------------------------------------------------------
+    def show_help(self) -> None:
+        """Open a window that renders the bundled HELP.md."""
+        existing = getattr(self, "_help_win", None)
+        if existing is not None and existing.winfo_exists():
+            existing.deiconify()
+            existing.lift()
+            existing.focus_set()
+            return
+
+        try:
+            with open(_resource_path("HELP.md"), "r", encoding="utf-8") as fh:
+                md = fh.read()
+        except OSError:
+            md = ("# Help\n\nThe help file (HELP.md) could not be found.\n\n"
+                  "See the project page for documentation.")
+
+        win = tk.Toplevel(self)
+        self._help_win = win
+        win.title("PDF Sherpa — Help")
+        win.geometry("660x740")
+        icon = _resource_path("sherpaicon.ico")
+        if os.path.isfile(icon):
+            try:
+                win.iconbitmap(icon)
+            except tk.TclError:
+                pass
+
+        wrap = ttk.Frame(win)
+        wrap.pack(fill="both", expand=True)
+        text = tk.Text(wrap, wrap="word", padx=16, pady=12, borderwidth=0,
+                       background="#ffffff", foreground="#1a1a1a",
+                       font=("Segoe UI", 11), cursor="arrow", spacing3=2)
+        sb = ttk.Scrollbar(wrap, orient="vertical", command=text.yview)
+        text.config(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        text.pack(side="left", fill="both", expand=True)
+
+        _render_markdown(text, md)
+        text.config(state="disabled")
+
+        win.bind("<Escape>", lambda e: win.destroy())
 
     # -- PDF list -------------------------------------------------------------
     def choose_folder(self) -> None:
@@ -884,6 +930,166 @@ class PDFSherpaApp(ttk.Frame):
 
         self.canvas.yview_scroll(-3 if not down else 3, "units")
         return "break"
+
+
+# ----------------------------------------------------------------------------
+# Minimal Markdown -> Tk Text renderer (for the Help window)
+# ----------------------------------------------------------------------------
+# Kept dependency-free on purpose: handles headings, bold/italic/inline-code,
+# links, bullet/numbered lists, fenced code blocks, horizontal rules, and
+# simple pipe tables. Anything fancier is rendered as plain text.
+
+_MD_INLINE = re.compile(
+    r"(?P<code>`[^`]+`)"
+    r"|(?P<bold>\*\*[^*]+\*\*)"
+    r"|(?P<italic>\*[^*\s][^*]*\*)"
+    r"|(?P<link>\[[^\]]+\]\([^)]+\))")
+_MD_TABLE_SEP = re.compile(r"^\s*:?-{2,}:?\s*$")
+
+
+def _configure_help_tags(text: "tk.Text") -> None:
+    base = "Segoe UI"
+    text.tag_configure("h1", font=(base, 18, "bold"), spacing1=10, spacing3=6)
+    text.tag_configure("h2", font=(base, 14, "bold"), spacing1=10, spacing3=4)
+    text.tag_configure("h3", font=(base, 12, "bold"), spacing1=8, spacing3=3)
+    text.tag_configure("bold", font=(base, 11, "bold"))
+    text.tag_configure("italic", font=(base, 11, "italic"))
+    text.tag_configure("code", font=("Consolas", 10), background="#f0f0f0")
+    text.tag_configure("codeblock", font=("Consolas", 10),
+                       background="#f5f5f5", lmargin1=24, lmargin2=24,
+                       spacing1=1, spacing3=1)
+    text.tag_configure("bullet", lmargin1=20, lmargin2=36)
+    text.tag_configure("rule", foreground="#bbbbbb", spacing1=4, spacing3=6)
+    text.tag_configure("link", foreground="#0a58ca", underline=True)
+
+
+def _md_inline(text: "tk.Text", line: str, base_tags: tuple) -> None:
+    """Insert one line, applying inline bold/italic/code/link formatting."""
+    pos = 0
+    for m in _MD_INLINE.finditer(line):
+        if m.start() > pos:
+            text.insert("end", line[pos:m.start()], base_tags)
+        if m.group("code"):
+            text.insert("end", m.group()[1:-1], base_tags + ("code",))
+        elif m.group("bold"):
+            text.insert("end", m.group()[2:-2], base_tags + ("bold",))
+        elif m.group("italic"):
+            text.insert("end", m.group()[1:-1], base_tags + ("italic",))
+        elif m.group("link"):
+            label, url = re.match(r"\[([^\]]+)\]\(([^)]+)\)", m.group()).groups()
+            tag = f"link-{id(m)}-{m.start()}"
+            text.insert("end", label, base_tags + ("link", tag))
+            text.tag_bind(tag, "<Button-1>",
+                          lambda e, u=url: webbrowser.open(u))
+            text.tag_bind(tag, "<Enter>",
+                          lambda e: text.config(cursor="hand2"))
+            text.tag_bind(tag, "<Leave>",
+                          lambda e: text.config(cursor="arrow"))
+        pos = m.end()
+    if pos < len(line):
+        text.insert("end", line[pos:], base_tags)
+    text.insert("end", "\n")
+
+
+def _md_table(text: "tk.Text", rows: list[str]) -> None:
+    """Render a block of pipe-table lines as aligned monospace text."""
+    parsed = []
+    for row in rows:
+        cells = [c.strip().replace("`", "")
+                 for c in row.strip().strip("|").split("|")]
+        if all(_MD_TABLE_SEP.match(c) or not c for c in cells):
+            continue  # the |---|---| separator row
+        parsed.append(cells)
+    if not parsed:
+        return
+    ncol = max(len(r) for r in parsed)
+    widths = [0] * ncol
+    for r in parsed:
+        for j, c in enumerate(r):
+            widths[j] = max(widths[j], len(c))
+    for r in parsed:
+        padded = "  ".join(c.ljust(widths[j]) for j, c in enumerate(r))
+        text.insert("end", padded + "\n", ("codeblock",))
+    text.insert("end", "\n")
+
+
+def _md_is_block_start(line: str) -> bool:
+    """True if `line` begins a new block (so it can't be lazy continuation)."""
+    s = line.strip()
+    return (not s or s.startswith("```") or s.startswith("#")
+            or s in ("---", "***", "___") or "|" in line
+            or re.match(r"^\s*[-*]\s+", line) is not None
+            or re.match(r"^\s*\d+\.\s+", line) is not None)
+
+
+def _render_markdown(text: "tk.Text", md: str) -> None:
+    _configure_help_tags(text)
+    lines = md.split("\n")
+    i, n = 0, len(md.split("\n"))
+
+    def gather_continuation(start: int) -> tuple:
+        """Join following non-blank, non-block-start lines (lazy wrapping)."""
+        parts, j = [], start
+        while j < n and lines[j].strip() and not _md_is_block_start(lines[j]):
+            parts.append(lines[j].strip())
+            j += 1
+        return " ".join(parts), j
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        if stripped.startswith("```"):                 # fenced code block
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                text.insert("end", lines[i] + "\n", ("codeblock",))
+                i += 1
+            i += 1                                      # skip closing fence
+            continue
+        if not stripped:
+            text.insert("end", "\n")
+            i += 1
+            continue
+        if stripped in ("---", "***", "___"):
+            text.insert("end", "─" * 50 + "\n", ("rule",))
+            i += 1
+            continue
+        if stripped.startswith("### "):
+            _md_inline(text, stripped[4:], ("h3",))
+            i += 1
+            continue
+        if stripped.startswith("## "):
+            _md_inline(text, stripped[3:], ("h2",))
+            i += 1
+            continue
+        if stripped.startswith("# "):
+            _md_inline(text, stripped[2:], ("h1",))
+            i += 1
+            continue
+        if "|" in line:                                 # table block
+            block = []
+            while i < len(lines) and "|" in lines[i]:
+                block.append(lines[i])
+                i += 1
+            _md_table(text, block)
+            continue
+        bullet = re.match(r"^\s*[-*]\s+(.*)", line)
+        if bullet:
+            rest, i = gather_continuation(i + 1)
+            content = bullet.group(1) + ((" " + rest) if rest else "")
+            text.insert("end", "•  ", ("bullet",))
+            _md_inline(text, content, ("bullet",))
+            continue
+        numbered = re.match(r"^\s*(\d+\.)\s+(.*)", line)
+        if numbered:
+            rest, i = gather_continuation(i + 1)
+            content = numbered.group(2) + ((" " + rest) if rest else "")
+            text.insert("end", numbered.group(1) + "  ", ("bullet",))
+            _md_inline(text, content, ("bullet",))
+            continue
+        rest, i = gather_continuation(i + 1)             # paragraph
+        para = stripped + ((" " + rest) if rest else "")
+        _md_inline(text, para, ())
 
 
 def _page_key(pdf_path: str) -> str:

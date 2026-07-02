@@ -5,7 +5,7 @@ a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('sherpaicon.ico', '.')],
+    datas=[('sherpaicon.ico', '.'), ('HELP.md', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
