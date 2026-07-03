@@ -5,6 +5,8 @@ __pycache__/
 # PyInstaller / build outputs
 build/
 dist/
+# Compiled installer -- published as a GitHub Release asset, not committed
+installer/
 
 # Local editor / tool settings
 .claude/

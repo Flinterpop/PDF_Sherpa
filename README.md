@@ -32,6 +32,14 @@ python app.py C:\docs    # or point it at any folder
 
 You can also switch folders at runtime with the **Choose folder…** button.
 
+## Installing (Windows)
+
+Download `PDFSherpa-Setup.exe` from the
+[latest release](https://github.com/Flinterpop/PDF_Sherpa/releases/latest).
+It is a per-user installer (no admin rights needed): it installs the app, adds
+Start-Menu (and optional desktop) shortcuts, and registers an uninstaller.
+Point the app at your own PDF folder with **Choose folder…** after installing.
+
 ## Standalone build & installer (Windows)
 
 Build the one-file exe, then compile the installer:
@@ -41,10 +49,12 @@ python -m PyInstaller PDFSherpa.spec       # -> dist\PDFSherpa.exe
 iscc installer.iss                         # -> installer\PDFSherpa-Setup.exe
 ```
 
-`PDFSherpa-Setup.exe` is a per-user installer (no admin rights needed): it
-installs the app, adds Start-Menu (and optional desktop) shortcuts, and
-registers an uninstaller. Point the app at your own PDF folder with
-**Choose folder…** after installing.
+The compiled installer is not committed to the repo -- publish it as a GitHub
+Release asset:
+
+```
+gh release create v<version> installer\PDFSherpa-Setup.exe
+```
 
 ## Metadata files
 
