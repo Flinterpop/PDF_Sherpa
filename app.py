@@ -151,6 +151,9 @@ class PDFSherpaApp(ttk.Frame):
         self.fit_mode: str | None = self.fit_pref  # "width" | "page" | None
         self._photo = None              # keep a ref so Tk doesn't GC the image
         self.filter_text = ""           # current PDF-list search filter
+        self.topic_filter_text = ""     # current topic-list search filter
+        self._topic_entries: list[tuple[str, int]] = []  # current PDF's topics
+        self._topic_placeholder: str | None = None  # shown instead of topics
         # Re-fit the page when a window resize settles (debounced).
         self._resize_after: str | None = None
         self._last_canvas_size = (0, 0)
@@ -233,7 +236,23 @@ class PDFSherpaApp(ttk.Frame):
         # 2. Topics
         mid = ttk.Frame(panes)
         ttk.Label(mid, text="Topics").pack(anchor="w")
-        self.topic_tree = ttk.Treeview(mid, columns=("page",),
+
+        # Search / filter box (filters the current PDF's topics only)
+        topic_search = ttk.Frame(mid)
+        topic_search.pack(side="top", fill="x", pady=(0, 4))
+        ttk.Label(topic_search, text="🔍").pack(side="left")
+        self.topic_search_var = tk.StringVar()
+        self.topic_search_var.trace_add("write", self._on_topic_search_changed)
+        topic_entry = ttk.Entry(topic_search,
+                                textvariable=self.topic_search_var)
+        topic_entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        ttk.Button(topic_search, text="✕", width=2,
+                   command=lambda: self.topic_search_var.set("")
+                   ).pack(side="left")
+
+        topic_wrap = ttk.Frame(mid)
+        topic_wrap.pack(side="top", fill="both", expand=True)
+        self.topic_tree = ttk.Treeview(topic_wrap, columns=("page",),
                                        show="tree headings",
                                        selectmode="browse")
         self.topic_tree.heading("#0", text="Topic")
@@ -241,7 +260,7 @@ class PDFSherpaApp(ttk.Frame):
         self.topic_tree.column("#0", width=200, anchor="w")
         self.topic_tree.column("page", width=50, anchor="center", stretch=False)
         self.topic_tree.pack(side="left", fill="both", expand=True)
-        topic_sb = ttk.Scrollbar(mid, orient="vertical",
+        topic_sb = ttk.Scrollbar(topic_wrap, orient="vertical",
                                  command=self.topic_tree.yview)
         topic_sb.pack(side="right", fill="y")
         self.topic_tree.config(yscrollcommand=topic_sb.set)
@@ -732,34 +751,57 @@ class PDFSherpaApp(ttk.Frame):
 
     # -- Topics ---------------------------------------------------------------
     def load_topics(self, pdf_path: str) -> None:
-        self.topic_tree.delete(*self.topic_tree.get_children())
+        self._topic_entries = []
+        self._topic_placeholder = None
         metadata_path = find_metadata_path(pdf_path)
         if metadata_path is None:
-            self.topic_tree.insert(
-                "", "end", text="(no metadata file found)", values=("",))
+            self._topic_placeholder = "(no metadata file found)"
+            self._populate_topic_tree()
             return
         try:
             entries = load_metadata(metadata_path)
         except Exception as exc:  # bad format, unreadable, etc.
-            self.topic_tree.insert(
-                "", "end",
-                text=f"(error reading {os.path.basename(metadata_path)})",
-                values=("",))
+            self._topic_placeholder = (
+                f"(error reading {os.path.basename(metadata_path)})")
+            self._populate_topic_tree()
             messagebox.showerror("Metadata error",
                                  f"Could not read {metadata_path}:\n\n{exc}")
             return
 
         if not entries:
-            self.topic_tree.insert(
-                "", "end",
-                text=f"(no topics in {os.path.basename(metadata_path)})",
-                values=("",))
+            self._topic_placeholder = (
+                f"(no topics in {os.path.basename(metadata_path)})")
+            self._populate_topic_tree()
             return
 
-        for topic, page in entries:
+        self._topic_entries = entries
+        self._populate_topic_tree()
+
+    def _populate_topic_tree(self) -> None:
+        """Fill the topic tree from the loaded entries, honouring the topic
+        search filter (substring match on the topic text only)."""
+        self.topic_tree.delete(*self.topic_tree.get_children())
+        if self._topic_placeholder is not None:
+            self.topic_tree.insert(
+                "", "end", text=self._topic_placeholder, values=("",))
+            return
+
+        needle = self.topic_filter_text.lower()
+        count = 0
+        for topic, page in self._topic_entries:
+            if needle and needle not in topic.lower():
+                continue
             # page is read back from the row's values on click; let Tk assign
             # the iid (topics/pages may repeat, so we can't use them as ids).
             self.topic_tree.insert("", "end", text=topic, values=(page,))
+            count += 1
+
+        if count == 0 and needle:
+            self.topic_tree.insert("", "end", text="(no matches)", values=("",))
+
+    def _on_topic_search_changed(self, *_args) -> None:
+        self.topic_filter_text = self.topic_search_var.get().strip()
+        self._populate_topic_tree()
 
     def on_topic_selected(self, _event=None) -> None:
         selection = self.topic_tree.selection()
