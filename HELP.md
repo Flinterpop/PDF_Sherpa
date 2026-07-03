@@ -8,8 +8,9 @@ built-in viewer.
 - **PDFs** (left) — every PDF found under the current folder, grouped by
   subfolder. Click one to open it. The search box filters the list as you type.
 - **Topics** (middle) — the selected PDF's topic list. Click a topic to jump
-  straight to that page.
-- **Viewer** (right) — the embedded page view.
+  straight to that page. The search box filters the topics as you type.
+- **Viewer** (right) — the embedded page view, with a search box that finds
+  text inside the open PDF (see **Searching** below).
 
 ## Adding PDFs
 
@@ -43,6 +44,24 @@ Use **Choose folder…** to point Sherpa at any folder of PDFs. It remembers
 which subfolders you left open, your window size, and the last PDF you were
 reading — and returns you to the page you left off on.
 
+## Searching
+
+Each pane has its own search box:
+
+- **PDFs** — filters the file list by name as you type; folders with no
+  matches are hidden.
+- **Topics** — filters the current PDF's topic list as you type.
+- **Viewer** — searches the **text of the open PDF**. Matches are highlighted
+  in yellow on the page, with the current match outlined in orange, and the
+  counter shows where you are (for example `2 / 17`). Use the **▲ / ▼**
+  buttons — or `Enter` / `Shift+Enter` in the box, or `F3` / `Shift+F3`
+  anywhere — to step between matches; stepping wraps around at the end.
+  `Ctrl+F` focuses the box. Searches are case-insensitive.
+
+Press the **✕** button to clear a search. Filters stay applied when you switch
+PDFs — a content search re-runs against the new document but stays on your
+page until you step to a match.
+
 ## Viewer controls
 
 - **Prev / Next** buttons, or the arrow keys, to page through the document.
@@ -61,6 +80,9 @@ reading — and returns you to the page you left off on.
 | + / = / - | Zoom in / out |
 | W | Fit width |
 | P | Full page |
+| Ctrl+F | Focus the content search box |
+| F3 / Shift+F3 | Next / previous search match |
+| Enter / Shift+Enter (in search box) | Next / previous search match |
 | F5 | Refresh PDF list |
 
 Arrow, space, and page keys defer to the PDF and topic lists while one of them
