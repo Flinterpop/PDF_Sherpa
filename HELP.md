@@ -1,5 +1,8 @@
 # PDF Sherpa — Help
 
+Vibe Coded with Claude Code using Fable 5 
+B. Graham - July 2026
+
 PDF Sherpa lets you browse a folder of PDFs **by topic** and read them in a
 built-in viewer.
 
