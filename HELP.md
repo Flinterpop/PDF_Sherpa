@@ -74,10 +74,14 @@ click **Highlight** in the toolbar — or right-click and choose **Highlight
 selection**. Highlights are standard PDF annotations, so they show up in any
 PDF viewer.
 
-Changes are kept in memory until you save: the **Save** button (or `Ctrl+S`)
-writes them into the PDF file itself. If you switch PDFs or close the app
-with unsaved highlights, Sherpa asks whether to save them. To remove a
-highlight, right-click it and choose **Remove highlight**, then save.
+Changes are kept in memory until you save. The **Save** button (or `Ctrl+S`)
+asks where to put them: **Yes** saves an annotated copy alongside the
+original — `manual.pdf` becomes `manual(ann).pdf`, with the topics file
+copied too — while **No** writes into the original file. Saving while
+viewing an `(ann)` copy just updates it, no questions asked. If you switch
+PDFs or close the app with unsaved highlights, Sherpa asks whether to save
+them. To remove a highlight, right-click it and choose **Remove highlight**,
+then save.
 
 Notes: scanned PDFs without a text layer have nothing to select, and saving
 highlights into a digitally signed PDF may invalidate its signature (Sherpa

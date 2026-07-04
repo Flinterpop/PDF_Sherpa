@@ -1188,23 +1188,57 @@ class PDFSherpaApp(ttk.Frame):
     def save_annotations(self) -> None:
         if self.doc is None or not self._annots_dirty:
             return
-        try:
-            signed = (self.doc.get_sigflags() or 0) > 0
-        except Exception:
-            signed = False
-        if signed and not messagebox.askyesno(
-                "Signed PDF",
-                "This PDF is digitally signed; saving highlights may "
-                "invalidate the signature.\n\nSave anyway?"):
-            return
-        try:
-            self.doc.saveIncr()           # append-only update, fast
-        except Exception as exc:
-            messagebox.showerror(
-                "Save failed",
-                f"Could not save highlights to\n"
-                f"{self.current_pdf_path}:\n\n{exc}")
-            return
+        src = self.current_pdf_path or ""
+        base, ext = os.path.splitext(src)
+        ann_path = base + "(ann)" + ext
+        save_copy = False
+        # An "(ann)" copy is already the annotated file -- save it in place
+        # without asking (avoids piling up "(ann)(ann)" names).
+        if not base.endswith("(ann)"):
+            choice = messagebox.askyesnocancel(
+                "Save highlights",
+                "Save highlights as a separate copy?\n\n"
+                f"Yes  –  save as {os.path.basename(ann_path)}\n"
+                f"No  –  save into {os.path.basename(src)}")
+            if choice is None:
+                return                    # cancelled; keep changes pending
+            save_copy = choice
+
+        if save_copy:
+            try:
+                self.doc.save(ann_path)   # full write to the new file
+            except Exception as exc:
+                messagebox.showerror(
+                    "Save failed",
+                    f"Could not save\n{ann_path}:\n\n{exc}")
+                return
+            # Give the copy the same topics file so it lists cleanly.
+            meta = find_metadata_path(src)
+            if meta is not None:
+                ann_meta = base + "(ann)" + os.path.splitext(meta)[1]
+                if not os.path.exists(ann_meta):
+                    try:
+                        shutil.copyfile(meta, ann_meta)
+                    except OSError:
+                        pass              # copy still saved; just no topics
+            self.refresh_pdf_list()       # show the new (ann) file
+        else:
+            try:
+                signed = (self.doc.get_sigflags() or 0) > 0
+            except Exception:
+                signed = False
+            if signed and not messagebox.askyesno(
+                    "Signed PDF",
+                    "This PDF is digitally signed; saving highlights may "
+                    "invalidate the signature.\n\nSave anyway?"):
+                return
+            try:
+                self.doc.saveIncr()       # append-only update, fast
+            except Exception as exc:
+                messagebox.showerror(
+                    "Save failed",
+                    f"Could not save highlights to\n{src}:\n\n{exc}")
+                return
         self._annots_dirty = False
         self._update_annot_buttons()
 
