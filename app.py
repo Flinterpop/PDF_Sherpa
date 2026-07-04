@@ -59,6 +59,9 @@ except ImportError:  # pragma: no cover
     ImageTk = None
 
 
+# Shown in the window title; keep in sync with AppVersion in installer.iss.
+APP_VERSION = "1.1.1"
+
 # Metadata extensions we look for, in order of preference.
 METADATA_EXTENSIONS = (".toc", ".json")
 
@@ -167,6 +170,12 @@ class PDFSherpaApp(ttk.Frame):
         self._content_scan_jump = False  # jump to the first hit when found
         # Re-fit the page when a window resize settles (debounced).
         self._resize_after: str | None = None
+        self._snap_after: str | None = None   # full-page window-snap pass
+        # Full-page fit: which canvas dimension drives the zoom during a
+        # user resize ("w"/"h"), and the canvas size of the last fit.
+        self._fit_master: str | None = None
+        self._fitted_canvas_size: tuple[int, int] | None = None
+        self._saved_sashes: list[int] | None = None  # pane widths pre-snap
         self._last_canvas_size = (0, 0)
         # Remembered open folders (relative paths); folders start closed unless
         # listed here.  Persisted across runs.
@@ -1157,8 +1166,20 @@ class PDFSherpaApp(ttk.Frame):
 
     def _refit_after_resize(self) -> None:
         self._resize_after = None
-        if self.doc is not None and self.fit_mode:
+        if self.doc is None or not self.fit_mode:
+            return
+        if self.fit_mode == "page" and self._fitted_canvas_size:
+            # The dimension the user dragged drives the zoom; the window
+            # snap then re-fits the other dimension to the page.
+            self.canvas.update_idletasks()
+            ow, oh = self._fitted_canvas_size
+            dw = self.canvas.winfo_width() - ow
+            dh = self.canvas.winfo_height() - oh
+            self._fit_master = "w" if abs(dw) >= abs(dh) else "h"
+        try:
             self.render_page()   # _apply_fit recomputes zoom for the new size
+        finally:
+            self._fit_master = None
 
     def _apply_fit(self) -> None:
         """When a fit mode is active, recompute self.zoom from the current
@@ -1174,7 +1195,12 @@ class PDFSherpaApp(ttk.Frame):
         if self.fit_mode == "page":
             canvas_h = self.canvas.winfo_height() or 800
             page_h = page.rect.height or 1
-            zoom = min(zoom, (canvas_h - pad) / page_h)
+            zoom_h = (canvas_h - pad) / page_h
+            if self._fit_master == "h":
+                zoom = zoom_h            # user dragged height: height rules
+            elif self._fit_master != "w":
+                zoom = min(zoom, zoom_h)  # no drag in play: whole page fits
+            self._fitted_canvas_size = (canvas_w, canvas_h)
         self.zoom = max(MIN_ZOOM, min(MAX_ZOOM, zoom))
 
     def render_page(self) -> None:
@@ -1194,6 +1220,55 @@ class PDFSherpaApp(ttk.Frame):
         self.canvas.yview_moveto(0)
         self.page_var.set(
             f"Page {self.current_page + 1} / {self.doc.page_count}")
+        if self.fit_mode == "page":
+            self._snap_window_to_page(pix.width, pix.height)
+
+    def _snap_window_to_page(self, page_w: int, page_h: int) -> None:
+        """Full-page mode: resize the toplevel so the canvas hugs the rendered
+        page instead of leaving gray slack around it.
+
+        Targets page size plus the fit padding so _apply_fit recomputes the
+        same zoom afterwards (otherwise each snap would shrink the page by the
+        pad).  The geometry change fires the debounced refit, which renders
+        and snaps again -- so any part of the resize absorbed by the other
+        panes is corrected over a few quick passes."""
+        top = self.winfo_toplevel()
+        if top.state() != "normal":
+            return                      # don't fight a maximized window
+        self.canvas.update_idletasks()
+        pad = 8                         # keep in sync with _apply_fit
+        dw = (page_w + pad) - self.canvas.winfo_width()
+        dh = (page_h + pad) - self.canvas.winfo_height()
+        if abs(dw) <= 2 and abs(dh) <= 2:
+            return                      # close enough -- avoid resize loops
+        new_w = max(480, min(top.winfo_width() + dw, top.winfo_screenwidth()))
+        new_h = max(360, min(top.winfo_height() + dh,
+                             top.winfo_screenheight()))
+        if (new_w, new_h) != (top.winfo_width(), top.winfo_height()):
+            # The WM resize redistributes width across all panes (by weight),
+            # so the canvas only receives part of the change.  Remember the
+            # sash positions; the follow-up pass restores them, putting the
+            # whole change on the viewer so it lands in one correction.
+            n_sashes = len(self.panes.panes()) - 1
+            self._saved_sashes = [self.panes.sashpos(i)
+                                  for i in range(n_sashes)]
+            top.geometry(f"{new_w}x{new_h}")
+            if self._snap_after is not None:
+                self.after_cancel(self._snap_after)
+            self._snap_after = self.after(180, self._snap_again)
+
+    def _snap_again(self) -> None:
+        self._snap_after = None
+        if self.doc is None or self.fit_mode != "page":
+            self._saved_sashes = None
+            return
+        for i, pos in enumerate(self._saved_sashes or []):
+            try:
+                self.panes.sashpos(i, pos)
+            except tk.TclError:
+                pass
+        self._saved_sashes = None
+        self.render_page()       # re-fits to the new size and snaps again
 
     def _render_message(self, message: str) -> None:
         self.canvas.delete("all")
@@ -1446,7 +1521,7 @@ def main() -> None:
     folder = sys.argv[1] if len(sys.argv) > 1 else _default_folder()
 
     root = tk.Tk()
-    root.title("PDF Sherpa")
+    root.title(f"PDF Sherpa - V{APP_VERSION}")
     root.geometry("1100x720")
 
     icon = _resource_path("sherpaicon.ico")
