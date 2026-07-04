@@ -168,6 +168,12 @@ class PDFSherpaApp(ttk.Frame):
         self._content_scan_needle = ""
         self._content_scan_page = 0     # next page the scan will read
         self._content_scan_jump = False  # jump to the first hit when found
+        # Text selection / highlight annotations on the open PDF.
+        self._select_anchor: tuple[float, float] | None = None  # canvas px
+        self._select_drag: tuple[float, float] | None = None
+        self._selected_rects: list = []  # word boxes (PDF points) selected
+        self._annots_dirty = False       # highlights not yet saved to disk
+        self._canvas_menu_pt: tuple[float, float] | None = None  # PDF points
         # Re-fit the page when a window resize settles (debounced).
         self._resize_after: str | None = None
         self._snap_after: str | None = None   # full-page window-snap pass
@@ -342,6 +348,13 @@ class PDFSherpaApp(ttk.Frame):
                    command=self.next_page).pack(side="left", padx=(4, 8))
         self.page_var = tk.StringVar(value="—")
         ttk.Label(nav, textvariable=self.page_var).pack(side="left")
+        self.highlight_btn = ttk.Button(nav, text="Highlight",
+                                        state="disabled",
+                                        command=self.highlight_selection)
+        self.highlight_btn.pack(side="left", padx=(12, 0))
+        self.save_btn = ttk.Button(nav, text="Save", state="disabled",
+                                   command=self.save_annotations)
+        self.save_btn.pack(side="left", padx=(4, 0))
         ttk.Button(nav, text="−",
                    command=lambda: self.change_zoom(1 / ZOOM_STEP)
                    ).pack(side="right")
@@ -366,6 +379,17 @@ class PDFSherpaApp(ttk.Frame):
         h_sb.grid(row=1, column=0, sticky="ew")
         self.canvas.config(yscrollcommand=v_sb.set, xscrollcommand=h_sb.set)
         self.canvas.bind("<Configure>", self._on_canvas_configure)
+        self.canvas.bind("<ButtonPress-1>", self._on_select_start)
+        self.canvas.bind("<B1-Motion>", self._on_select_drag)
+        self.canvas.bind("<ButtonRelease-1>", self._on_select_end)
+        self.canvas.bind("<Button-3>", self._on_canvas_right_click)
+
+        # Right-click context menu for the viewer
+        self.canvas_menu = tk.Menu(self, tearoff=0)
+        self.canvas_menu.add_command(label="Highlight selection",
+                                     command=self.highlight_selection)
+        self.canvas_menu.add_command(label="Remove highlight",
+                                     command=self._remove_highlight_here)
         canvas_wrap.rowconfigure(0, weight=1)
         canvas_wrap.columnconfigure(0, weight=1)
         panes.add(right, weight=3)
@@ -427,6 +451,10 @@ class PDFSherpaApp(ttk.Frame):
 
         # Refresh the PDF list (offers to build missing topic lists).
         top.bind("<F5>", lambda e: self.on_refresh_clicked())
+
+        # Save highlight annotations.
+        top.bind("<Control-s>",
+                 lambda e: (self.save_annotations(), "break")[1])
 
         # Content search: Ctrl+F focuses the box, F3 / Shift+F3 step matches.
         top.bind("<Control-f>",
@@ -844,6 +872,7 @@ class PDFSherpaApp(ttk.Frame):
                 break
 
     def _on_close(self) -> None:
+        self._maybe_save_annots()
         update_config({"geometry": self.winfo_toplevel().geometry()})
         self.winfo_toplevel().destroy()
 
@@ -1055,6 +1084,142 @@ class PDFSherpaApp(ttk.Frame):
                 width=2 if current else 1,
                 fill="#ffd000", stipple="gray25")
 
+    # -- Text selection & highlight annotations --------------------------------
+    def _on_select_start(self, event) -> None:
+        if self.doc is None:
+            return
+        self._select_anchor = (self.canvas.canvasx(event.x),
+                               self.canvas.canvasy(event.y))
+        self._select_drag = None
+        if self._selected_rects:          # a plain click clears the selection
+            self._selected_rects = []
+            self.canvas.delete("selection")
+            self._update_annot_buttons()
+
+    def _on_select_drag(self, event) -> None:
+        if self.doc is None or self._select_anchor is None:
+            return
+        x = self.canvas.canvasx(event.x)
+        y = self.canvas.canvasy(event.y)
+        self._select_drag = (x, y)
+        ax, ay = self._select_anchor
+        self.canvas.delete("selband")     # rubber-band the drag area
+        self.canvas.create_rectangle(ax, ay, x, y, outline="#3b78d8",
+                                     dash=(3, 2), tags="selband")
+
+    def _on_select_end(self, _event) -> None:
+        self.canvas.delete("selband")
+        anchor, self._select_anchor = self._select_anchor, None
+        drag, self._select_drag = self._select_drag, None
+        if self.doc is None or anchor is None or drag is None:
+            return
+        z = self.zoom
+        x0, x1 = sorted((anchor[0], drag[0]))
+        y0, y1 = sorted((anchor[1], drag[1]))
+        sel = fitz.Rect(x0 / z, y0 / z, x1 / z, y1 / z)
+        words = self.doc[self.current_page].get_text("words")
+        self._selected_rects = [fitz.Rect(w[:4]) for w in words
+                                if fitz.Rect(w[:4]).intersects(sel)]
+        self._draw_selection()
+        self._update_annot_buttons()
+
+    def _draw_selection(self) -> None:
+        self.canvas.delete("selection")
+        z = self.zoom
+        for r in self._selected_rects:
+            self.canvas.create_rectangle(
+                r.x0 * z, r.y0 * z, r.x1 * z, r.y1 * z,
+                outline="", fill="#3b78d8", stipple="gray50",
+                tags="selection")
+
+    def _update_annot_buttons(self) -> None:
+        self.highlight_btn.config(
+            state="normal" if self._selected_rects else "disabled")
+        self.save_btn.config(
+            state="normal" if self._annots_dirty else "disabled")
+
+    def highlight_selection(self) -> None:
+        if self.doc is None or not self._selected_rects:
+            return
+        page = self.doc[self.current_page]
+        annot = page.add_highlight_annot(self._selected_rects)
+        annot.update()
+        self._selected_rects = []
+        self._annots_dirty = True
+        self._update_annot_buttons()
+        self.render_page()                # annotation shows on the repaint
+
+    @staticmethod
+    def _find_highlight(page, pt: tuple[float, float]):
+        """The highlight annotation under a PDF-space point, or None.
+
+        The caller must keep `page` alive while using the returned annot --
+        a PyMuPDF Annot dies with its owning Page object."""
+        for annot in page.annots(types=(fitz.PDF_ANNOT_HIGHLIGHT,)):
+            if annot.rect.contains(fitz.Point(*pt)):
+                return annot
+        return None
+
+    def _on_canvas_right_click(self, event) -> None:
+        if self.doc is None:
+            return
+        self._canvas_menu_pt = (self.canvas.canvasx(event.x) / self.zoom,
+                                self.canvas.canvasy(event.y) / self.zoom)
+        page = self.doc[self.current_page]
+        self.canvas_menu.entryconfig(
+            0, state="normal" if self._selected_rects else "disabled")
+        self.canvas_menu.entryconfig(
+            1, state="normal"
+            if self._find_highlight(page, self._canvas_menu_pt) else "disabled")
+        self.canvas_menu.tk_popup(event.x_root, event.y_root)
+
+    def _remove_highlight_here(self) -> None:
+        if self.doc is None or self._canvas_menu_pt is None:
+            return
+        page = self.doc[self.current_page]
+        annot = self._find_highlight(page, self._canvas_menu_pt)
+        if annot is None:
+            return
+        page.delete_annot(annot)
+        self._annots_dirty = True
+        self._update_annot_buttons()
+        self.render_page()
+
+    def save_annotations(self) -> None:
+        if self.doc is None or not self._annots_dirty:
+            return
+        try:
+            signed = (self.doc.get_sigflags() or 0) > 0
+        except Exception:
+            signed = False
+        if signed and not messagebox.askyesno(
+                "Signed PDF",
+                "This PDF is digitally signed; saving highlights may "
+                "invalidate the signature.\n\nSave anyway?"):
+            return
+        try:
+            self.doc.saveIncr()           # append-only update, fast
+        except Exception as exc:
+            messagebox.showerror(
+                "Save failed",
+                f"Could not save highlights to\n"
+                f"{self.current_pdf_path}:\n\n{exc}")
+            return
+        self._annots_dirty = False
+        self._update_annot_buttons()
+
+    def _maybe_save_annots(self) -> None:
+        """Offer to keep unsaved highlights before the document goes away."""
+        if self.doc is None or not self._annots_dirty:
+            return
+        name = os.path.basename(self.current_pdf_path or "this document")
+        if messagebox.askyesno(
+                "Unsaved highlights",
+                f"{name} has unsaved highlights.\n\nSave them?"):
+            self.save_annotations()
+        self._annots_dirty = False        # saved or deliberately discarded
+        self._update_annot_buttons()
+
     def on_topic_selected(self, _event=None) -> None:
         selection = self.topic_tree.selection()
         if not selection:
@@ -1080,8 +1245,11 @@ class PDFSherpaApp(ttk.Frame):
             return
         if pdf_path == self.current_pdf_path:
             return
-        # Stop any in-flight content scan before the document goes away.
+        # Stop any in-flight content scan before the document goes away, and
+        # offer to keep unsaved highlights.
         self._cancel_content_scan()
+        self._maybe_save_annots()
+        self._selected_rects = []
         try:
             if self.doc is not None:
                 self.doc.close()
@@ -1114,6 +1282,9 @@ class PDFSherpaApp(ttk.Frame):
         page_index = max(0, min(page_index, self.doc.page_count - 1))
         changed = page_index != self.current_page
         self.current_page = page_index
+        if changed and self._selected_rects:
+            self._selected_rects = []     # selection was on the old page
+            self._update_annot_buttons()
         self.render_page()
         self._maybe_snap()
         if changed and self.current_pdf_path:
@@ -1220,6 +1391,7 @@ class PDFSherpaApp(ttk.Frame):
         self.canvas.delete("all")
         self.canvas.create_image(0, 0, anchor="nw", image=self._photo)
         self._draw_match_highlights()
+        self._draw_selection()
         self.canvas.config(scrollregion=(0, 0, pix.width, pix.height))
         self.canvas.yview_moveto(0)
         self.page_var.set(

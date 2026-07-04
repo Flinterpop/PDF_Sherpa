@@ -67,6 +67,22 @@ Press the **✕** button to clear a search. Filters stay applied when you switch
 PDFs — a content search re-runs against the new document but stays on your
 page until you step to a match.
 
+## Highlighting text
+
+Drag across text in the viewer to select it (selected words shade blue), then
+click **Highlight** in the toolbar — or right-click and choose **Highlight
+selection**. Highlights are standard PDF annotations, so they show up in any
+PDF viewer.
+
+Changes are kept in memory until you save: the **Save** button (or `Ctrl+S`)
+writes them into the PDF file itself. If you switch PDFs or close the app
+with unsaved highlights, Sherpa asks whether to save them. To remove a
+highlight, right-click it and choose **Remove highlight**, then save.
+
+Notes: scanned PDFs without a text layer have nothing to select, and saving
+highlights into a digitally signed PDF may invalidate its signature (Sherpa
+warns first).
+
 ## Viewer controls
 
 - **Prev / Next** buttons, or the arrow keys, to page through the document.
@@ -86,6 +102,7 @@ page until you step to a match.
 | W | Fit width |
 | P | Full page |
 | Ctrl+F | Focus the content search box |
+| Ctrl+S | Save highlights to the PDF |
 | F3 / Shift+F3 | Next / previous search match |
 | Enter / Shift+Enter (in search box) | Next / previous search match |
 | F5 | Refresh PDF list |
