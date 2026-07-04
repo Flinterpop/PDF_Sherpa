@@ -3,7 +3,7 @@
 ; Requires the app to be built first:  python -m PyInstaller PDFSherpa.spec
 
 #define AppName "PDF Sherpa"
-#define AppVersion "1.0.0"
+#define AppVersion "1.1.0"
 #define AppExe "PDFSherpa.exe"
 
 [Setup]
