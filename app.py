@@ -60,7 +60,7 @@ except ImportError:  # pragma: no cover
 
 
 # Shown in the window title; keep in sync with AppVersion in installer.iss.
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.2.0"
 
 # Metadata extensions we look for, in order of preference.
 METADATA_EXTENSIONS = (".toc", ".json")
