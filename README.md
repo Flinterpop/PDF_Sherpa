@@ -12,6 +12,10 @@ A small desktop app (Tkinter) that lets you browse PDFs by topic.
 - **Middle pane** — when you select a PDF, shows the topics and page numbers from
   its companion metadata file (same base name, `.toc` or `.json`).
 - **Right pane** — an embedded viewer. Click a topic and the PDF jumps to that page.
+- **Search everywhere** — filter the PDF list by name, filter the topic list,
+  and full-text search inside the open PDF with highlighted matches.
+- **Highlight text** — drag-select words on the page and save them as real PDF
+  highlight annotations, into the original or an `(ann)` copy.
 - **Drag & drop** — drop a PDF anywhere on the window to file it into an
   `inbox` subfolder with an auto-generated topics file.
 
@@ -90,8 +94,26 @@ Page numbers are **1-based** (page 1 = the first page).
   collapsed**, and the app **remembers which folders you left open/closed** for
   next time. (While a search filter is active, folders open automatically to
   reveal matches.)
-- **Search box** above the list filters PDFs by filename as you type (`✕`
-  clears it).
+- **Search boxes** in every pane (`✕` clears): the PDF list filters by
+  filename, the Topics pane filters the topic list, and the viewer's box
+  searches the **text of the open PDF** — matches highlight in yellow with a
+  live `2 / 17` counter, `Enter`/`F3` steps forward, `Shift+Enter`/`Shift+F3`
+  back, `Ctrl+F` focuses the box. The scan runs in background chunks, so even
+  a 9000-page document stays responsive while it searches.
+- **Highlight text**: drag across text in the viewer (words shade blue), then
+  click **Highlight** or right-click → *Highlight selection*. **Save**
+  (`Ctrl+S`) offers an annotated copy — `manual.pdf` → `manual(ann).pdf`, with
+  the topics file copied along — or writes into the original file. Right-click
+  an existing highlight to remove it. Highlights are standard PDF annotations,
+  visible in any viewer.
+- **PDFs / Topics** toolbar toggles collapse the left and middle panes — hide
+  both for a full-width reading view. The choice persists across runs.
+- **Full page** fits the whole page and resizes the window to hug it; dragging
+  a window edge or corner then zooms the page to follow. Selecting a different
+  PDF never moves the window.
+- The **title bar** shows the app version and the current folder; the **Help**
+  button opens the rendered user guide, and hovering the less obvious buttons
+  shows a tooltip.
 - **Right-click** a PDF for **Open PDF** / **Reveal in Explorer**; right-click a
   folder to open it in Explorer.
 - The app remembers the **last page you were on in each PDF** and returns there
@@ -126,6 +148,10 @@ Page numbers are **1-based** (page 1 = the first page).
 | `+` / `=` / `−` | Zoom in / out |
 | `W` | Fit width |
 | `P` | Full page |
+| `Ctrl+F` | Focus the content search box |
+| `Ctrl+S` | Save highlights to the PDF |
+| `F3` / `Shift+F3` | Next / previous search match |
+| `Enter` / `Shift+Enter` (in search box) | Next / previous search match |
 | `F5` | Refresh PDF list |
 
 Arrow, space, and page keys defer to the PDF/topic lists while one of them has
