@@ -62,7 +62,7 @@ except ImportError:  # pragma: no cover
 
 
 # Shown in the window title; keep in sync with AppVersion in installer.iss.
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.3.2"
 
 # Metadata extensions we look for, in order of preference.
 METADATA_EXTENSIONS = (".toc", ".json")
@@ -845,6 +845,7 @@ class PDFSherpaApp(ttk.Frame):
                                          title="Choose folder containing PDFs")
         if chosen:
             self.folder = chosen
+            update_config({"folder": os.path.abspath(chosen)})
             self.refresh_pdf_list()
 
     def refresh_pdf_list(self) -> None:
@@ -2032,7 +2033,15 @@ def _default_folder() -> str:
 
 
 def main() -> None:
-    folder = sys.argv[1] if len(sys.argv) > 1 else _default_folder()
+    # Folder precedence: command line, then the last folder chosen via
+    # "Choose folder..." (if it still exists -- it may be on an unplugged
+    # drive), then the default pdfs folder next to the app.
+    if len(sys.argv) > 1:
+        folder = sys.argv[1]
+    else:
+        saved = load_config().get("folder")
+        folder = (saved if isinstance(saved, str) and os.path.isdir(saved)
+                  else _default_folder())
 
     root = tk.Tk()
     root.title(f"PDF Sherpa - V{APP_VERSION}")

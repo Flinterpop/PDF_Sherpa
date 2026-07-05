@@ -42,7 +42,9 @@ python app.py            # uses the ./pdfs subfolder
 python app.py C:\docs    # or point it at any folder
 ```
 
-You can also switch folders at runtime with the **Choose folder…** button.
+You can also switch folders at runtime with the **Choose folder…** button —
+the chosen folder is remembered and reopened on the next launch (a
+command-line folder overrides it).
 
 ## Installing (Windows)
 

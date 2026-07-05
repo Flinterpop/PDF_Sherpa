@@ -53,8 +53,9 @@ by hand. Deleting the last bookmark removes the file, and saving highlights as a
 
 ## Choosing a folder
 
-Use **Choose folder…** to point Sherpa at any folder of PDFs. It remembers which subfolders you left open, your window size, and the last PDF you were
-reading — and returns you to the page you left off on.
+Use **Choose folder…** to point Sherpa at any folder of PDFs. Your choice is remembered — the next launch opens the same folder — along with which
+subfolders you left open, your window size, and the last PDF you were reading, returning you to the page you left off on. (Starting the app with a
+folder on the command line overrides the remembered folder.)
 
 ## Searching
 
