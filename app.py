@@ -4,7 +4,7 @@ PDF Sherpa
 
 A small desktop app that:
 
-1. Lists every PDF found in a subfolder (default: ./pdfs).
+1. Lists every PDF found in a folder (the last chosen folder, or ./pdfs).
 2. When a PDF is selected, loads its companion metadata file -- same base
    filename, different extension (.toc or .json) -- and shows the list of
    topics with their page numbers.
@@ -62,7 +62,7 @@ except ImportError:  # pragma: no cover
 
 
 # Shown in the window title; keep in sync with AppVersion in installer.iss.
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.3.3"
 
 # Metadata extensions we look for, in order of preference.
 METADATA_EXTENSIONS = (".toc", ".json")

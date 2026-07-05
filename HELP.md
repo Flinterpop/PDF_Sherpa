@@ -25,7 +25,8 @@ generated automatically, and the last one is selected and opened for you.
 
 Every PDF can have a companion topics file with the same base name — for example `manual.pdf` pairs with `manual.toc`. If a PDF has none, it shows as
 `(no metadata)`. Press **Refresh** (or `F5`) and choose to build topic lists:
-Sherpa reads each PDF's bookmarks, or falls back to detecting headings from the text when there are no bookmarks.
+Sherpa reads each PDF's built-in outline bookmarks (not your own `Ctrl+B` bookmarks), or falls back to detecting headings from the text when there are
+none.
 
 A `.toc` is a plain text file you can edit by hand — the page is the trailing number, so topics may contain colons and dashes:
 

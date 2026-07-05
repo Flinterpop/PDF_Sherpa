@@ -8,7 +8,8 @@
 
 A small desktop app (Tkinter) that lets you browse PDFs by topic.
 
-- **Left pane** — lists every PDF in a subfolder (default `./pdfs`).
+- **Left pane** — lists every PDF in a folder (the last folder you chose, or
+  a `./pdfs` subfolder by default).
 - **Middle pane** — when you select a PDF, shows the topics and page numbers from
   its companion metadata file (same base name, `.toc` or `.json`), with your
   own bookmarks in a resizable list above them.
@@ -38,7 +39,7 @@ pip install -r requirements.txt
 ## Run
 
 ```
-python app.py            # uses the ./pdfs subfolder
+python app.py            # last chosen folder (or the ./pdfs subfolder)
 python app.py C:\docs    # or point it at any folder
 ```
 
@@ -113,7 +114,8 @@ Page numbers are **1-based** (page 1 = the first page).
 - **Highlight text**: drag across text in the viewer (words shade blue), then
   click **Highlight** or right-click → *Highlight selection*. **Save**
   (`Ctrl+S`) offers an annotated copy — `manual.pdf` → `manual(ann).pdf`, with
-  the topics file copied along — or writes into the original file. Right-click
+  the topics and bookmarks files copied along — or writes into the original
+  file. Right-click
   an existing highlight to remove it. Highlights are standard PDF annotations,
   visible in any viewer.
 - **Bookmarks**: press `Ctrl+B` (or the **🔖** button, or right-click the page)
@@ -139,7 +141,9 @@ Page numbers are **1-based** (page 1 = the first page).
 - A PDF without a metadata file is still listed (marked `(no metadata)`) and
   viewable — you just won't get the topic list. **Refresh** (button or `F5`)
   offers to **auto-build topic lists** for any PDFs that don't have one, using
-  each PDF's bookmarks — or its text headings when there are no bookmarks.
+  each PDF's built-in outline bookmarks — or its text headings when there are
+  none. (These built-in bookmarks are separate from your own `Ctrl+B`
+  bookmarks.)
 - **Drop PDFs onto the window** (from Explorer, Outlook attachments saved to
   disk, etc.) and they are **copied into an `inbox` subfolder** of the current
   folder, a **`.toc` topics file is auto-generated** for each (bookmarks first,
@@ -151,8 +155,9 @@ Page numbers are **1-based** (page 1 = the first page).
   and re-applied to every PDF you open — and it persists across app runs
   (saved to `%APPDATA%\PDFGuide\config.json`). Manual **+/−** zoom is a temporary
   override that doesn't change the saved preference.
-- The app also remembers your **window size/position** and **re-opens the last
-  PDF** you were viewing on the next launch (same config file).
+- The app also remembers your **window size/position**, the **folder you
+  chose**, the **bookmarks divider position**, and **re-opens the last PDF**
+  you were viewing on the next launch (same config file).
 - The mouse wheel scrolls within the page and **flips to the next/previous page
   when you scroll past the bottom/top edge**.
 
