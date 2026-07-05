@@ -48,6 +48,7 @@ import tempfile
 import threading
 import urllib.request
 import webbrowser
+import zipfile
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 
@@ -67,12 +68,15 @@ except ImportError:  # pragma: no cover
 
 
 # Shown in the window title; keep in sync with AppVersion in installer.iss.
-APP_VERSION = "1.3.5"
+APP_VERSION = "1.3.6"
 
 # Where the launch-time update check looks for new releases.
 UPDATE_API_URL = ("https://api.github.com/repos/"
                   "Flinterpop/PDF_Sherpa/releases/latest")
 UPDATE_ASSET_NAME = "PDFSherpa-Setup.exe"
+# The no-install variant: a zip holding just PDFSherpa.exe.  A portable copy
+# updates itself from this asset instead of running the installer.
+UPDATE_PORTABLE_ASSET_NAME = "PDFSherpa-Portable.zip"
 
 # Metadata extensions we look for, in order of preference.
 METADATA_EXTENSIONS = (".toc", ".json")
@@ -929,18 +933,25 @@ class PDFSherpaApp(ttk.Frame):
         if not choice:
             update_config({"skip_version": info["version_str"]})
             return
-        if getattr(sys, "frozen", False) and info["asset_url"]:
-            self._begin_download(info)
+        portable = _running_portable()
+        url = info["portable_url"] if portable else info["asset_url"]
+        if getattr(sys, "frozen", False) and url:
+            self._begin_download(info, url, portable)
         else:
-            # Running from source (or no installer asset): don't install over
+            # Running from source (or no matching asset): don't install over
             # a dev checkout -- just open the releases page.
             webbrowser.open(info["html_url"])
 
-    def _begin_download(self, info: dict) -> None:
-        """Download the installer in the background with a small progress
-        window; the app stays usable underneath."""
-        dest = os.path.join(tempfile.gettempdir(),
-                            f"PDFSherpa-Setup-{info['version_str']}.exe")
+    def _begin_download(self, info: dict, url: str, portable: bool) -> None:
+        """Download the installer (or portable zip) in the background with a
+        small progress window; the app stays usable underneath."""
+        self._dl_portable = portable
+        if portable:
+            dest = os.path.join(tempfile.gettempdir(),
+                                f"PDFSherpa-Portable-{info['version_str']}.zip")
+        else:
+            dest = os.path.join(tempfile.gettempdir(),
+                                f"PDFSherpa-Setup-{info['version_str']}.exe")
         win = tk.Toplevel(self)
         self._dl_win = win
         win.title("Updating PDF Sherpa")
@@ -955,7 +966,7 @@ class PDFSherpaApp(ttk.Frame):
         bar.start(12)
         self._download_result: tuple | None = None
         threading.Thread(target=self._download_worker,
-                         args=(info["asset_url"], dest), daemon=True).start()
+                         args=(url, dest), daemon=True).start()
         self.after(500, self._poll_download_result)
 
     def _download_worker(self, url: str, dest: str) -> None:
@@ -988,7 +999,10 @@ class PDFSherpaApp(ttk.Frame):
                 "You can download the update manually from the releases "
                 "page on GitHub.")
             return
-        self._launch_installer_and_exit(payload)
+        if self._dl_portable:
+            self._swap_portable_and_exit(payload)
+        else:
+            self._launch_installer_and_exit(payload)
 
     def _launch_installer_and_exit(self, setup_path: str) -> None:
         """Hand off to the installer and quit so it can replace the exe.
@@ -1019,6 +1033,50 @@ class PDFSherpaApp(ttk.Frame):
                            | subprocess.CREATE_NEW_PROCESS_GROUP),
             close_fds=True,
             cwd=os.path.dirname(setup_path))
+        self._on_close()
+
+    def _swap_portable_and_exit(self, zip_path: str) -> None:
+        """Portable self-update: replace this exe with the one from the
+        downloaded zip, then relaunch.
+
+        Same batch-file handoff as _launch_installer_and_exit (and for the
+        same list2cmdline reason).  The new exe is unpacked next to the zip
+        and `move`d over the running copy once it has exited; if the move
+        fails (exe still locked), the batch carries on and relaunches the
+        intact old exe.  `move` works across volumes, so a portable copy on
+        a USB stick updates too.
+        """
+        app_exe = sys.executable
+        new_exe = zip_path + ".new.exe"
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                member = next((n for n in zf.namelist()
+                               if n.lower().endswith(".exe")), None)
+                if member is None:
+                    raise ValueError("no exe inside the update zip")
+                with zf.open(member) as src, open(new_exe, "wb") as out:
+                    shutil.copyfileobj(src, out)
+        except Exception as exc:
+            messagebox.showerror(
+                "Update failed",
+                f"Could not unpack the update:\n{exc}\n\n"
+                "You can download the update manually from the releases "
+                "page on GitHub.")
+            return
+        batch_path = zip_path + ".cmd"
+        with open(batch_path, "w", encoding="ascii", errors="replace") as fh:
+            fh.write(f'timeout /t 2 /nobreak >nul\r\n'
+                     f'move /y "{new_exe}" "{app_exe}"\r\n'
+                     f'start "" "{app_exe}"\r\n'
+                     f'del /q "{zip_path}"\r\n'
+                     f'del /q "{new_exe}"\r\n'
+                     f'del /q "%~f0"\r\n')
+        subprocess.Popen(
+            ["cmd", "/c", batch_path],
+            creationflags=(subprocess.CREATE_NO_WINDOW
+                           | subprocess.CREATE_NEW_PROCESS_GROUP),
+            close_fds=True,
+            cwd=os.path.dirname(zip_path))
         self._on_close()
 
     # -- PDF list -------------------------------------------------------------
@@ -2205,6 +2263,25 @@ def _resource_path(name: str) -> str:
     return os.path.join(base, name)
 
 
+def _running_portable() -> bool:
+    """True when this frozen exe is a loose portable copy.
+
+    The installed copy always has Inno Setup's uninstaller (unins*.exe)
+    sitting beside it; a downloaded portable exe does not.  Source checkouts
+    return False (the update prompt already special-cases non-frozen runs).
+    When in doubt, prefer portable: an in-place exe swap is less invasive
+    than silently running the installer.
+    """
+    if not getattr(sys, "frozen", False):
+        return False
+    try:
+        names = os.listdir(os.path.dirname(sys.executable))
+    except OSError:
+        return True
+    return not any(n.lower().startswith("unins") and n.lower().endswith(".exe")
+                   for n in names)
+
+
 def _parse_version(text: str) -> tuple[int, ...] | None:
     """'v1.3.3' / '1.3.3' -> (1, 3, 3); None if malformed (e.g. a beta tag)."""
     try:
@@ -2217,8 +2294,9 @@ def _fetch_latest_release() -> dict:
     """Query GitHub for the newest release.  Blocking -- worker thread only.
 
     Returns {"version": tuple, "version_str": str, "asset_url": str | None,
-    "html_url": str}.  Raises on any failure (network, JSON, bad tag); the
-    caller decides whether that is silent (auto check) or reported (manual).
+    "portable_url": str | None, "html_url": str}.  Raises on any failure
+    (network, JSON, bad tag); the caller decides whether that is silent
+    (auto check) or reported (manual).
     """
     req = urllib.request.Request(
         UPDATE_API_URL,
@@ -2231,15 +2309,21 @@ def _fetch_latest_release() -> dict:
     if version is None:
         raise ValueError(f"unrecognized release tag: {tag!r}")
     asset_url = None
+    portable_url = None
+    fallback_exe = None
     for asset in data.get("assets", []):
-        if asset.get("name") == UPDATE_ASSET_NAME:
-            asset_url = asset.get("browser_download_url")
-            break
-        if asset_url is None and str(asset.get("name", "")).endswith(".exe"):
-            asset_url = asset.get("browser_download_url")
+        name = str(asset.get("name", ""))
+        url = asset.get("browser_download_url")
+        if name == UPDATE_ASSET_NAME:
+            asset_url = url
+        elif name == UPDATE_PORTABLE_ASSET_NAME:
+            portable_url = url
+        elif fallback_exe is None and name.endswith(".exe"):
+            fallback_exe = url
     return {"version": version,
             "version_str": tag.lstrip("vV"),
-            "asset_url": asset_url,
+            "asset_url": asset_url or fallback_exe,
+            "portable_url": portable_url,
             "html_url": data.get(
                 "html_url",
                 "https://github.com/Flinterpop/PDF_Sherpa/releases/latest")}

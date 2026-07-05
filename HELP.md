@@ -113,8 +113,9 @@ Arrow, space, and page keys defer to the PDF and topic lists while one of them h
 ## Updates
 
 A couple of seconds after launch, Sherpa quietly checks GitHub for a newer release (it never interrupts you when you're up to date or offline). When
-one is found you get three choices: **Yes** downloads the installer and updates in place — the app restarts on the new version by itself; **No** skips
-that version for good (you'll be asked again for the next one); **Cancel** just reminds you on the next launch.
+one is found you get three choices: **Yes** downloads the update and applies it in place — the app restarts on the new version by itself; **No** skips
+that version for good (you'll be asked again for the next one); **Cancel** just reminds you on the next launch. This works for both the installed
+copy (it re-runs the installer silently) and the portable copy (it swaps the exe where it sits, even on a USB stick).
 
 You can also check on demand with the **Check for updates** button at the bottom of this Help window — it always answers, including "You're up to
 date", and still offers a version you previously skipped.

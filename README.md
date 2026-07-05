@@ -49,32 +49,42 @@ command-line folder overrides it).
 
 ## Installing (Windows)
 
-Download `PDFSherpa-Setup.exe` from the
-[latest release](https://github.com/Flinterpop/PDF_Sherpa/releases/latest).
-It is a per-user installer (no admin rights needed): it installs the app, adds
-Start-Menu (and optional desktop) shortcuts, and registers an uninstaller.
+Grab either flavor from the
+[latest release](https://github.com/Flinterpop/PDF_Sherpa/releases/latest):
+
+- **`PDFSherpa-Setup.exe`** — a per-user installer (no admin rights needed):
+  it installs the app, adds Start-Menu (and optional desktop) shortcuts, and
+  registers an uninstaller.
+- **`PDFSherpa-Portable.zip`** — no install at all: unzip `PDFSherpa.exe`
+  anywhere (a folder, a USB stick) and run it. Settings still live in
+  `%APPDATA%\PDFGuide\config.json`.
+
 Point the app at your own PDF folder with **Choose folder…** after installing.
 
 The app **checks for updates at launch** (quietly, in the background) and
-offers to download and install a newer release in place — or to skip that
-version (`"skip_version"` in the config file). A manual **Check for updates**
-button lives at the bottom of the Help window. To disable the launch check,
-add `"check_updates": false` to `%APPDATA%\PDFGuide\config.json`.
+offers to download and apply a newer release in place — the installed copy
+re-runs the installer silently, the portable copy swaps its own exe — or to
+skip that version (`"skip_version"` in the config file). A manual **Check for
+updates** button lives at the bottom of the Help window. To disable the launch
+check, add `"check_updates": false` to `%APPDATA%\PDFGuide\config.json`.
 
 ## Standalone build & installer (Windows)
 
-Build the one-file exe, then compile the installer:
+Build the one-file exe, then compile the installer and zip the portable
+variant:
 
 ```
 python -m PyInstaller PDFSherpa.spec       # -> dist\PDFSherpa.exe
 iscc installer.iss                         # -> installer\PDFSherpa-Setup.exe
+powershell Compress-Archive -Force dist\PDFSherpa.exe installer\PDFSherpa-Portable.zip
 ```
 
-The compiled installer is not committed to the repo -- publish it as a GitHub
-Release asset:
+The compiled artifacts are not committed to the repo -- publish them as GitHub
+Release assets (both names are what the in-app updater looks for, so keep
+them exact):
 
 ```
-gh release create v<version> installer\PDFSherpa-Setup.exe
+gh release create v<version> installer\PDFSherpa-Setup.exe installer\PDFSherpa-Portable.zip
 ```
 
 ## Metadata files
