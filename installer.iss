@@ -1,6 +1,8 @@
 ; Inno Setup script for PDF Sherpa
 ; Build with:  iscc installer.iss   (produces installer\PDFSherpa-Setup.exe)
 ; Requires the app to be built first:  python -m PyInstaller PDFSherpa.spec
+; Releases also ship installer\PDFSherpa-Portable.zip (just the exe, zipped);
+; release.ps1 does the whole cycle -- see the README's build section.
 
 #define AppName "PDF Sherpa"
 #define AppVersion "1.3.6"
