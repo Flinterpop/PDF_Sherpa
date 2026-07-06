@@ -161,7 +161,8 @@ Page numbers are **1-based** (page 1 = the first page).
 - **Right-click** a PDF for **Open PDF** / **Reveal in Explorer**; right-click a
   folder to open it in Explorer.
 - The app remembers the **last page you were on in each PDF** and returns there
-  when you reopen it.
+  when you reopen it (positions are kept for the 200 most recently viewed
+  PDFs, so the settings file never grows without bound).
 - A PDF without a metadata file is still listed (marked `(no metadata)`) and
   viewable — you just won't get the topic list. **Refresh** (button or `F5`)
   offers to **auto-build topic lists** for any PDFs that don't have one, using
@@ -184,6 +185,26 @@ Page numbers are **1-based** (page 1 = the first page).
   you were viewing on the next launch (same config file).
 - The mouse wheel scrolls within the page and **flips to the next/previous page
   when you scroll past the bottom/top edge**.
+
+## Settings file
+
+Everything the app remembers lives in one JSON file:
+`%APPDATA%\PDFGuide\config.json` (the folder keeps the app's former name so
+settings saved before the rename survive). It is safe to edit while the app
+is closed, or to delete for a fresh start.
+
+| Key | Meaning |
+|-----|---------|
+| `folder` | Last folder chosen with **Choose folder…** |
+| `geometry` | Window size and position |
+| `last_pdf` | PDF re-opened on the next launch |
+| `last_pages` | Last-viewed page per PDF (200 most recent) |
+| `expanded_folders` | Subfolders left open in the PDF list |
+| `fit_pref` | Viewer fit preference: `"width"` or `"page"` |
+| `bm_sash` | Bookmarks/Topics divider position |
+| `show_pdf_list`, `show_topics` | Pane visibility toggles |
+| `check_updates` | `false` disables the launch update check |
+| `skip_version` | Release the update prompt should not re-offer |
 
 ## Keyboard shortcuts
 
