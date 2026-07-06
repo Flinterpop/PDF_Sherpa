@@ -314,6 +314,7 @@ class PDFSherpaApp(ttk.Frame):
         self._ctx_path: str | None = None       # PDF-list context-menu target
         self._help_win: tk.Toplevel | None = None
         self._dl_win: tk.Toplevel | None = None      # download progress window
+        self._dl_portable = False    # downloading the portable zip, not setup
         self._update_thread: threading.Thread | None = None
         self._update_result: tuple | None = None     # set by the worker thread
         self._download_result: tuple | None = None   # set by the worker thread
@@ -1106,7 +1107,7 @@ class PDFSherpaApp(ttk.Frame):
                     raise ValueError("no exe inside the update zip")
                 with zf.open(member) as src, open(new_exe, "wb") as out:
                     shutil.copyfileobj(src, out)
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, zipfile.BadZipFile) as exc:
             messagebox.showerror(
                 "Update failed",
                 f"Could not unpack the update:\n{exc}\n\n"
