@@ -93,6 +93,10 @@ ZOOM_STEP = 1.25
 # so config.json can't grow without bound).
 MAX_REMEMBERED_PAGES = 200
 
+# How many favorite PDFs to pin above the PDF search box (newest first;
+# the oldest is dropped once this many are pinned).
+MAX_FAVORITES = 10
+
 
 def _add_tooltip(widget, text: str, delay_ms: int = 500) -> None:
     """Attach a hover tooltip to a widget (Tk has none built in).  Works on
@@ -308,6 +312,14 @@ class PDFSherpaApp(ttk.Frame):
         # listed here.  Persisted across runs.
         saved = load_config().get("expanded_folders", [])
         self._expanded = set(saved) if isinstance(saved, list) else set()
+        # Favorite PDFs pinned above the search box (absolute paths, newest
+        # first, capped at MAX_FAVORITES).  Persisted across runs.
+        fav = load_config().get("favorites", [])
+        self._favorites: list[str] = (
+            [p for p in fav if isinstance(p, str)][:MAX_FAVORITES]
+            if isinstance(fav, list) else [])
+        self._fav_placeholder = False   # True while the list shows the hint row
+        self._fav_ctx_path: str | None = None   # favorites context-menu target
         # State owned by later flows, declared here so the object's full
         # state is visible in one place.
         self._pdf_by_iid: dict[str, str] = {}   # tree item id -> pdf path
@@ -388,6 +400,25 @@ class PDFSherpaApp(ttk.Frame):
     def _build_pdf_pane(self, parent) -> ttk.Frame:
         """PDF list pane (grouped by subfolder under the top-level folder)."""
         left = ttk.Frame(parent)
+
+        # Favorites: up to MAX_FAVORITES pinned PDFs, above the search box.
+        # Right-click a PDF in the list below to add or remove one.
+        ttk.Label(left, text="Favorites").pack(anchor="w")
+        fav_wrap = ttk.Frame(left)
+        fav_wrap.pack(side="top", fill="x", pady=(0, 6))
+        self.fav_list = tk.Listbox(fav_wrap, height=1, activestyle="none",
+                                   exportselection=False, borderwidth=1,
+                                   highlightthickness=0)
+        self.fav_list.pack(side="left", fill="x", expand=True)
+        self.fav_list.bind("<<ListboxSelect>>", self._on_favorite_selected)
+        self.fav_list.bind("<Button-3>", self._on_favorite_right_click)
+        self.fav_menu = tk.Menu(self, tearoff=0)
+        self.fav_menu.add_command(label="Open PDF", command=self._fav_ctx_open)
+        self.fav_menu.add_command(label="Remove from favorites",
+                                  command=self._fav_ctx_remove)
+        self.fav_menu.add_command(label="Reveal in Explorer",
+                                  command=self._fav_ctx_reveal)
+
         ttk.Label(left, text="PDFs").pack(anchor="w")
 
         # Search / filter box
@@ -428,7 +459,11 @@ class PDFSherpaApp(ttk.Frame):
                                   command=self._ctx_open)
         self.pdf_menu.add_command(label="Reveal in Explorer",
                                   command=self._ctx_reveal)
+        self.pdf_menu.add_separator()
+        self.pdf_menu.add_command(label="Add to favorites",
+                                  command=self._ctx_toggle_favorite)
         self._left_pane = left
+        self._refresh_favorites_list()
         return left
 
     def _build_topics_pane(self, parent) -> ttk.Frame:
@@ -1215,6 +1250,8 @@ class PDFSherpaApp(ttk.Frame):
         No-op if the PDF isn't currently listed."""
         if not pdf_path:
             return
+        if self._is_favorite(pdf_path):
+            self._refresh_favorites_list()   # blue-cue may have changed
         want = os.path.normcase(os.path.abspath(pdf_path))
         for iid, path in self._pdf_by_iid.items():
             if os.path.normcase(os.path.abspath(path)) == want:
@@ -1307,9 +1344,14 @@ class PDFSherpaApp(ttk.Frame):
         if path is not None:
             self._ctx_path = path
             self.pdf_menu.entryconfigure(0, state="normal", label="Open PDF")
+            self.pdf_menu.entryconfigure(
+                3, state="normal",
+                label=("Remove from favorites" if self._is_favorite(path)
+                       else "Add to favorites"))
         else:
             self._ctx_path = self._folder_path_for(iid)
             self.pdf_menu.entryconfigure(0, state="disabled", label="Open")
+            self.pdf_menu.entryconfigure(3, state="disabled")
         if self._ctx_path:
             self.pdf_menu.tk_popup(event.x_root, event.y_root)
 
@@ -1342,6 +1384,100 @@ class PDFSherpaApp(ttk.Frame):
         except OSError as exc:
             messagebox.showerror("Reveal in Explorer", str(exc))
 
+    # -- Favorites ------------------------------------------------------------
+    def _is_favorite(self, pdf_path: str) -> bool:
+        key = _page_key(pdf_path)
+        return any(_page_key(p) == key for p in self._favorites)
+
+    def _add_favorite(self, pdf_path: str) -> None:
+        """Pin a PDF to the top of the favorites list (deduped, capped)."""
+        if not pdf_path:
+            return
+        key = _page_key(pdf_path)
+        self._favorites = [p for p in self._favorites if _page_key(p) != key]
+        self._favorites.insert(0, os.path.abspath(pdf_path))
+        del self._favorites[MAX_FAVORITES:]     # drop the oldest over the cap
+        update_config({"favorites": self._favorites})
+        self._refresh_favorites_list()
+
+    def _remove_favorite(self, pdf_path: str) -> None:
+        key = _page_key(pdf_path)
+        kept = [p for p in self._favorites if _page_key(p) != key]
+        if len(kept) == len(self._favorites):
+            return                              # wasn't a favorite
+        self._favorites = kept
+        update_config({"favorites": self._favorites})
+        self._refresh_favorites_list()
+
+    def _refresh_favorites_list(self) -> None:
+        """Redraw the favorites listbox, sizing it to its contents.  Missing
+        files show red; PDFs with saved bookmarks show blue (matching the
+        tree).  An empty list shows a single greyed hint row."""
+        lb = self.fav_list
+        lb.delete(0, "end")
+        self._fav_placeholder = not self._favorites
+        if self._fav_placeholder:
+            lb.insert("end", " (right-click a PDF below to add)")
+            lb.itemconfig(0, foreground="#999")
+            lb.config(height=1)
+            return
+        for i, path in enumerate(self._favorites):
+            lb.insert("end", " " + os.path.basename(path))
+            if not os.path.isfile(path):
+                lb.itemconfig(i, foreground="#c01c28")   # missing file
+            elif os.path.isfile(bookmarks_path(path)):
+                lb.itemconfig(i, foreground="#1a5fb4")   # has bookmarks
+        lb.config(height=min(MAX_FAVORITES, len(self._favorites)))
+
+    def _open_favorite(self, pdf_path: str) -> None:
+        """Load a favorite; select it in the tree too when it's listed."""
+        if not os.path.isfile(pdf_path):
+            messagebox.showerror("Favorites", f"File not found:\n{pdf_path}")
+            return
+        if not self._select_pdf(pdf_path):      # not under the current folder
+            self.load_pdf(pdf_path)
+            self.load_topics(pdf_path)
+
+    def _on_favorite_selected(self, _event=None) -> None:
+        if self._fav_placeholder:
+            return
+        sel = self.fav_list.curselection()
+        if sel and 0 <= sel[0] < len(self._favorites):
+            self._open_favorite(self._favorites[sel[0]])
+
+    def _ctx_toggle_favorite(self) -> None:
+        """PDF-list menu: add the target PDF to favorites, or remove it."""
+        path = self._ctx_path
+        if not path or os.path.isdir(path):
+            return
+        if self._is_favorite(path):
+            self._remove_favorite(path)
+        else:
+            self._add_favorite(path)
+
+    def _on_favorite_right_click(self, event) -> None:
+        if self._fav_placeholder:
+            return
+        idx = self.fav_list.nearest(event.y)
+        if idx < 0 or idx >= len(self._favorites):
+            return
+        self.fav_list.selection_clear(0, "end")
+        self.fav_list.selection_set(idx)
+        self._fav_ctx_path = self._favorites[idx]
+        self.fav_menu.tk_popup(event.x_root, event.y_root)
+
+    def _fav_ctx_open(self) -> None:
+        if self._fav_ctx_path:
+            self._open_favorite(self._fav_ctx_path)
+
+    def _fav_ctx_remove(self) -> None:
+        if self._fav_ctx_path:
+            self._remove_favorite(self._fav_ctx_path)
+
+    def _fav_ctx_reveal(self) -> None:
+        self._ctx_path = self._fav_ctx_path
+        self._ctx_reveal()
+
     # -- Session (window size + last PDF) -------------------------------------
     def _restore_session(self) -> None:
         cfg = load_config()
@@ -1360,15 +1496,17 @@ class PDFSherpaApp(ttk.Frame):
 
         top.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    def _select_pdf(self, pdf_path: str) -> None:
-        """Select pdf_path in the tree if listed (selection fires the load)."""
+    def _select_pdf(self, pdf_path: str) -> bool:
+        """Select pdf_path in the tree if listed (selection fires the load).
+        Returns True when a matching row was found and selected."""
         want = os.path.normcase(os.path.abspath(pdf_path))
         for iid, path in self._pdf_by_iid.items():
             if os.path.normcase(os.path.abspath(path)) == want:
                 self.pdf_tree.selection_set(iid)
                 self.pdf_tree.see(iid)
                 self.pdf_tree.focus(iid)
-                break
+                return True
+        return False
 
     def _on_close(self) -> None:
         self._maybe_save_annots()
@@ -1940,7 +2078,10 @@ class PDFSherpaApp(ttk.Frame):
             self._selected_rects = []     # selection was on the old page
             self._update_annot_buttons()
         self.render_page()
-        self._maybe_snap()
+        # No _maybe_snap() here: paging through a single PDF must not resize
+        # the window.  Full-page mode still re-fits each page to the current
+        # window (via render_page -> _apply_fit); the window only snaps on the
+        # Full page button and on user window resizes.
         if changed and self.current_pdf_path:
             self._save_last_page(self.current_pdf_path, page_index)
 
@@ -2061,9 +2202,10 @@ class PDFSherpaApp(ttk.Frame):
 
     def _maybe_snap(self) -> None:
         """Snap the window to the page in full-page mode.  Called from the
-        actions that should resize the window (Full page button, page turns,
-        user window resizes) -- deliberately NOT from every render, so e.g.
-        selecting a different PDF never moves the window."""
+        actions that should resize the window (Full page button, user window
+        resizes) -- deliberately NOT from every render, nor from page turns,
+        so scrolling through a single PDF (or selecting a different PDF) never
+        moves the window."""
         if self.fit_mode == "page" and self.doc is not None and self._last_pix:
             self._snap_window_to_page(*self._last_pix)
 
