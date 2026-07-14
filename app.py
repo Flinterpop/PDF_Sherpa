@@ -13,6 +13,7 @@ A small desktop app that:
    of the current folder and auto-generate its .toc topics file.
 5. Bookmark pages (Ctrl+B) with your own names; bookmarks show in their own
    list above the Topics and are saved next to the PDF (name.bookmarks.json).
+   PDFs that have bookmarks are shown in blue in the PDF list.
 6. Checks GitHub for a newer release at launch and can update itself in
    place -- the installed copy re-runs the installer, a portable copy swaps
    its own exe (opt out with "check_updates": false in config.json).
@@ -375,13 +376,13 @@ class PDFSherpaApp(ttk.Frame):
         _add_tooltip(pdfs_toggle,
                      "Show or hide the PDF list pane.\n"
                      "Hide both panes for a full-width reading view.")
-        topics_toggle = ttk.Checkbutton(toolbar, text="Topics",
+        topics_toggle = ttk.Checkbutton(toolbar, text="Topics and Bookmarks",
                                         style="Toolbutton",
                                         variable=self.show_topics_var,
                                         command=self._apply_pane_visibility)
         topics_toggle.pack(side="left", padx=(2, 0))
         _add_tooltip(topics_toggle,
-                     "Show or hide the Topics pane.\n"
+                     "Show or hide the Topics and Bookmarks pane.\n"
                      "Hide both panes for a full-width reading view.")
 
     def _build_pdf_pane(self, parent) -> ttk.Frame:
@@ -407,6 +408,8 @@ class PDFSherpaApp(ttk.Frame):
         self.pdf_tree.column("#0", width=240, anchor="w")
         self.pdf_tree.tag_configure("folder", foreground="#333")
         self.pdf_tree.tag_configure("nometa", foreground="#999")
+        # PDFs with saved bookmarks stand out in blue (see _pdf_row_tags).
+        self.pdf_tree.tag_configure("bookmarked", foreground="#1a5fb4")
         self.pdf_tree.pack(side="left", fill="both", expand=True)
         pdf_sb = ttk.Scrollbar(tree_wrap, orient="vertical",
                                command=self.pdf_tree.yview)
@@ -1184,13 +1187,40 @@ class PDFSherpaApp(ttk.Frame):
                 text = name if has_meta else name + "   (no metadata)"
                 iid = self.pdf_tree.insert(
                     parent, "end", text=text,
-                    tags=() if has_meta else ("nometa",))
+                    tags=self._pdf_row_tags(path, has_meta))
                 self._pdf_by_iid[iid] = path
                 count += 1
 
         if count == 0:
             msg = "(no matches)" if needle else "(no PDFs found)"
             self.pdf_tree.insert("", "end", text=msg)
+
+    def _pdf_row_tags(self, pdf_path: str, has_meta: bool) -> tuple[str, ...]:
+        """Tree tags (and thus colour) for a PDF row.  A PDF with saved
+        bookmarks shows blue; otherwise a PDF with no .toc/.json metadata shows
+        grey; otherwise the default colour.  Bookmarks win over the no-metadata
+        cue -- the "(no metadata)" text still says so -- so a bookmarked PDF
+        always stands out.  Checking the sidecar's existence is cheap: an empty
+        bookmark list deletes the file (see save_bookmarks), so file present
+        means the PDF has bookmarks."""
+        if os.path.isfile(bookmarks_path(pdf_path)):
+            return ("bookmarked",)
+        if not has_meta:
+            return ("nometa",)
+        return ()
+
+    def _recolor_pdf_row(self, pdf_path: str) -> None:
+        """Recompute a PDF's row colour after its bookmarks change (so adding
+        the first bookmark turns it blue, and removing the last reverts it).
+        No-op if the PDF isn't currently listed."""
+        if not pdf_path:
+            return
+        want = os.path.normcase(os.path.abspath(pdf_path))
+        for iid, path in self._pdf_by_iid.items():
+            if os.path.normcase(os.path.abspath(path)) == want:
+                has_meta = find_metadata_path(path) is not None
+                self.pdf_tree.item(iid, tags=self._pdf_row_tags(path, has_meta))
+                return
 
     def on_pdf_selected(self, _event=None) -> None:
         selection = self.pdf_tree.selection()
@@ -1457,6 +1487,7 @@ class PDFSherpaApp(ttk.Frame):
         self._bookmarks.sort(key=lambda b: b["page"])
         save_bookmarks(self.current_pdf_path, self._bookmarks)
         self._populate_bookmark_tree()
+        self._recolor_pdf_row(self.current_pdf_path)  # first bookmark -> blue
         self._select_bookmark_row(self._bookmarks.index(bookmark))
 
     def _select_bookmark_row(self, index: int) -> None:
@@ -1508,6 +1539,7 @@ class PDFSherpaApp(ttk.Frame):
         del self._bookmarks[i]
         save_bookmarks(self.current_pdf_path, self._bookmarks)
         self._populate_bookmark_tree()
+        self._recolor_pdf_row(self.current_pdf_path)  # last one gone -> revert
 
     # -- Content search (text of the open PDF) --------------------------------
     def _on_content_search_changed(self, *_args) -> None:

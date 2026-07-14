@@ -47,8 +47,8 @@ you're reading. Name it whatever you like — the suggested name is just `Page N
 
 Your bookmarks appear in their own **Bookmarks** list above the Topics. Click a bookmark to jump to its page; right-click one to **Rename** or
 **Delete** it. The list only appears when the PDF has bookmarks — otherwise the Topics take the full height — and you can drag the divider between
-the two lists to resize them (the divider position is remembered across runs). These are separate from a PDF's built-in bookmarks, which feed the
-topic list.
+the two lists to resize them (the divider position is remembered across runs). PDFs that have bookmarks are shown in **blue** in the PDF list, so you
+can spot them at a glance. These are separate from a PDF's built-in bookmarks, which feed the topic list.
 
 Bookmarks are saved next to the PDF — `manual.pdf` gets `manual.bookmarks.json` — so they travel with the folder and are easy to edit
 by hand. Deleting the last bookmark removes the file, and saving highlights as an `(ann)` copy carries the bookmarks along.
