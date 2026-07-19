@@ -69,10 +69,26 @@ skip that version (`"skip_version"` in the config file). A manual **Check for
 updates** button lives at the bottom of the Help window. To disable the launch
 check, add `"check_updates": false` to `%APPDATA%\PDFGuide\config.json`.
 
-## Running on Linux / macOS
+## Installing (Linux)
 
-PDF Sherpa is a Tkinter app and runs on Linux and macOS from source. A helper
-script sets everything up on first launch:
+The easiest way — grab the **`PDFSherpa-<version>-x86_64.AppImage`** from the
+[latest release](https://github.com/Flinterpop/PDF_Sherpa/releases/latest).
+It bundles Python, Tcl/Tk, PyMuPDF and Pillow, so there's nothing to install:
+
+```
+chmod +x PDFSherpa-*-x86_64.AppImage
+./PDFSherpa-*-x86_64.AppImage
+```
+
+It needs a 64-bit desktop with FUSE 3 (standard on Ubuntu 22.04+, Fedora,
+etc.) and a glibc at least as new as the build host's. To add it to your
+application menu, use your desktop's "AppImage" integration or move it
+somewhere on your `PATH`.
+
+## Running from source (Linux / macOS)
+
+PDF Sherpa is a Tkinter app and also runs from source on Linux and macOS. A
+helper script sets everything up on first launch:
 
 ```
 ./run.sh                 # last-used folder (or ./pdfs)
@@ -102,6 +118,21 @@ FileManager1 D-Bus interface, falling back to opening its folder. Drag-and-drop
 from the file manager is Windows-only; use **Choose folder…** or drop files
 into the folder directly. The launch-time update check targets the Windows
 release only, so on Linux/macOS just `git pull` to update.
+
+## Building the AppImage (Linux)
+
+To produce the bundled `PDFSherpa-<version>-x86_64.AppImage` yourself:
+
+```
+./build-appimage.sh        # -> dist/PDFSherpa-<version>-x86_64.AppImage
+```
+
+It freezes the app with PyInstaller (pulling in Tcl/Tk, PyMuPDF and Pillow),
+assembles an AppDir, and packs it with `appimagetool` using the statically
+linked type2 runtime (so the result runs on FUSE-3-only systems). Build
+tooling and downloads are cached under `build/`; both `build/` and `dist/`
+stay out of git. Build on the oldest glibc you want to support — the AppImage
+requires a glibc at least as new as the build host's.
 
 ## Standalone build & installer (Windows)
 
