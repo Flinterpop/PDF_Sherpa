@@ -69,6 +69,40 @@ skip that version (`"skip_version"` in the config file). A manual **Check for
 updates** button lives at the bottom of the Help window. To disable the launch
 check, add `"check_updates": false` to `%APPDATA%\PDFGuide\config.json`.
 
+## Running on Linux / macOS
+
+PDF Sherpa is a Tkinter app and runs on Linux and macOS from source. A helper
+script sets everything up on first launch:
+
+```
+./run.sh                 # last-used folder (or ./pdfs)
+./run.sh ~/Documents     # open a specific folder
+```
+
+On its first run `run.sh` creates a local `.venv`, installs **PyMuPDF** and
+**Pillow** into it, and then launches the app; later runs just launch. You need
+Python 3.9+ with Tkinter — Tkinter ships separately on many distros:
+
+- Debian/Ubuntu: `sudo apt install python3-tk`
+- Fedora: `sudo dnf install python3-tkinter`
+- Arch: `sudo pacman -S tk`
+
+To add PDF Sherpa to your application menu (a per-user `.desktop` entry, no
+root needed):
+
+```
+./install-linux.sh            # install / update the menu entry
+./install-linux.sh --remove   # remove it
+```
+
+Settings live in `~/.config/PDFGuide/config.json` (following the XDG spec).
+Platform notes: **Open in default viewer** uses `xdg-open` (Linux) / `open`
+(macOS), and **Show in file manager** selects the file via the freedesktop
+FileManager1 D-Bus interface, falling back to opening its folder. Drag-and-drop
+from the file manager is Windows-only; use **Choose folder…** or drop files
+into the folder directly. The launch-time update check targets the Windows
+release only, so on Linux/macOS just `git pull` to update.
+
 ## Standalone build & installer (Windows)
 
 To cut a full release in one step (bump versions, build everything, commit,
