@@ -27,7 +27,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # Kept in step with app/Version.h by release.ps1; a test enforces it.
-project(PDFSherpaCpp VERSION 2.0.0 LANGUAGES CXX)
+project(PDFSherpaCpp VERSION 2.0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

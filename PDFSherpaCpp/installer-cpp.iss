@@ -16,7 +16,7 @@
 ; produce this file by accident.
 
 #define AppName "PDF Sherpa"
-#define AppVersion "2.0.0"
+#define AppVersion "2.0.1"
 #define AppExe "PDFSherpa.exe"
 #define BuildDir "build\app\Release"
 
