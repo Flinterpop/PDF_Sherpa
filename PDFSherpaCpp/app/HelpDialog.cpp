@@ -69,7 +69,7 @@ std::string markdown_to_html(const std::string& markdown)
     return html;
 }
 
-HelpDialog::HelpDialog(wxWindow* parent)
+HelpDialog::HelpDialog(wxWindow* parent, std::function<void()> on_check_updates)
     : wxDialog(parent, wxID_ANY, wxString(kAppName) + L" Help",
                wxDefaultPosition, wxSize(820, 760),
                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
@@ -95,6 +95,14 @@ HelpDialog::HelpDialog(wxWindow* parent)
                                  wxString(kAppName) + L" v" + kAppVersion),
                 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 8);
     footer->AddStretchSpacer(1);
+    if (on_check_updates) {
+        auto* check = new wxButton(this, wxID_ANY, L"Check for updates");
+        footer->Add(check, 0, wxALL, 6);
+        check->Bind(wxEVT_BUTTON,
+                    [handler = std::move(on_check_updates)](wxCommandEvent&) {
+                        handler();
+                    });
+    }
     auto* about = new wxButton(this, wxID_ANY, L"About");
     footer->Add(about, 0, wxALL, 6);
     footer->Add(new wxButton(this, wxID_OK, L"Close"), 0, wxALL, 6);

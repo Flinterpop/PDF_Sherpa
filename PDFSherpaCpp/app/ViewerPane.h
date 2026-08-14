@@ -56,7 +56,6 @@ public:
     void change_zoom(float factor);
     void fit_width();
     void fit_page();
-    FitMode fit_mode() const { return fit_mode_; }
 
     // -- content search --
     void focus_search();
@@ -64,7 +63,6 @@ public:
     void prev_match() { step_match(-1); }
 
     // -- highlights --
-    bool has_selection() const { return !selected_rects_.empty(); }
     void highlight_selection();
     bool dirty() const { return doc_.dirty(); }
     // Offer to save pending highlights.  Returns false if the user cancelled
@@ -74,6 +72,14 @@ public:
     void set_page_changed_handler(std::function<void(int)> handler)
     {
         on_page_changed_ = std::move(handler);
+    }
+    // Raised when the user picks a fit, so the choice can be persisted.  The
+    // Python app writes fit_pref on every _set_fit_pref call; without this the
+    // preference is read at startup and never written, so it silently never
+    // survives a restart.
+    void set_fit_changed_handler(std::function<void(FitMode)> handler)
+    {
+        on_fit_changed_ = std::move(handler);
     }
     // Asked to bookmark the current page from the canvas context menu.
     void set_bookmark_requested_handler(std::function<void(int)> handler)
@@ -154,6 +160,7 @@ private:
     std::optional<std::pair<float, float>> menu_point_;
 
     std::function<void(int)> on_page_changed_;
+    std::function<void(FitMode)> on_fit_changed_;
     std::function<void(int)> on_bookmark_requested_;
     std::function<void()> on_documents_changed_;
 };

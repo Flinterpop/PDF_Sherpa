@@ -75,8 +75,7 @@ private:
     wxTreeCtrl* topic_tree_ = nullptr;
     wxTextCtrl* filter_box_ = nullptr;
 
-    std::vector<int> topic_pages_;     // parallel to visible topic rows
-    std::vector<int> bookmark_index_;  // parallel to visible bookmark rows
+    std::vector<int> topic_pages_;  // parallel to visible topic rows
 
     std::function<void(int)> on_page_requested_;
     std::function<void()> on_bookmarks_changed_;

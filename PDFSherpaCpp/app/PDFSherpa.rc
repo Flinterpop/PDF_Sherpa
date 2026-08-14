@@ -1,0 +1,47 @@
+// Application resources: the icon, and the version information Explorer shows.
+//
+// Without an icon resource the executable gets the generic Windows one, and so
+// do the Start-Menu shortcut, the taskbar button and the uninstall entry.  The
+// deprecated PyInstaller build set this via icon=['sherpaicon.ico']; the C++
+// port dropped it, which is what this file restores.
+//
+// The icon must be the LOWEST-numbered icon resource in the executable: that
+// is the one Explorer picks for the file itself.
+
+#include <windows.h>
+
+#include "Version.h"
+
+1 ICON "..\\..\\sherpaicon.ico"
+
+// FILEVERSION and PRODUCTVERSION are numeric tuples and cannot take a string
+// macro, so they are spelled out here.  release.ps1 rewrites them alongside
+// Version.h, and test_version.cpp asserts the pieces stay in step.
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     2,0,1,0
+PRODUCTVERSION  2,0,1,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"   // US English, Unicode
+        BEGIN
+            VALUE "CompanyName",      "RabidFox"
+            VALUE "FileDescription",  "PDF Sherpa - topic-indexed PDF browser"
+            VALUE "FileVersion",      PDFSHERPA_VERSION_STRING
+            VALUE "InternalName",     "PDFSherpa"
+            VALUE "LegalCopyright",   "Licensed under the GNU AGPL v3.0 or later"
+            VALUE "OriginalFilename", "PDFSherpa.exe"
+            VALUE "ProductName",      "PDF Sherpa"
+            VALUE "ProductVersion",   PDFSHERPA_VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -287,6 +287,9 @@ void ViewerPane::fit_width()
     fit_mode_ = FitMode::kWidth;
     apply_fit();
     render_current_page();
+    if (on_fit_changed_) {
+        on_fit_changed_(fit_mode_);
+    }
 }
 
 void ViewerPane::fit_page()
@@ -294,6 +297,9 @@ void ViewerPane::fit_page()
     fit_mode_ = FitMode::kPage;
     apply_fit();
     render_current_page();
+    if (on_fit_changed_) {
+        on_fit_changed_(fit_mode_);
+    }
 }
 
 void ViewerPane::apply_fit()

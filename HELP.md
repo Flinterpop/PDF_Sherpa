@@ -1,5 +1,7 @@
 # PDF Sherpa — Help
 
+*Last updated: 14 Aug 2026*
+
 Vibe Coded with Claude Code using Fable 5 
 
 B. Graham - July 2026
@@ -8,11 +10,11 @@ PDF Sherpa lets you browse a folder of PDFs **by topic** and read them in a buil
 
 ## The three panes
 
-- **PDFs** (left) — every PDF found under the current folder, grouped by subfolder. Click one to open it. The search box filters the list as you type.
+- **PDFs** (left) — every PDF found under your top-level folders, each shown as its own heading with subfolders nested beneath it. Click one to open it. The search box filters the list as you type.
   Right-click a PDF for **Open PDF** (in your default viewer), **Reveal in Explorer**, or **Add to favorites**; right-click a folder to open it in Explorer.
   A **Favorites** list sits above the search box: up to 10 pinned PDFs (newest first) that you can open in one click. Each row shows the PDF's path
-  relative to the current folder, and favorites are stored that way — so they follow the folder if you move or rename it, and re-point when you switch
-  to a different root folder (PDFs outside the current folder are kept as absolute paths). Right-click a
+  relative to the top-level folder it sits under, and favorites are stored that way — so they keep working if you move or rename that folder
+  (a PDF outside every top-level folder is kept as an absolute path). Right-click a
   favorite to open it, reveal it, or remove it. Favorites are remembered across runs, and a favorite that also has bookmarks shows in blue. The **⋯**
   button beside the *Favorites* heading lets you **clear** the list, or **export** it to / **import** it from a JSON file (handy for moving your
   favorites to another machine); importing can either merge with or replace your current list.
@@ -25,7 +27,7 @@ choice is remembered across runs, and hidden panes keep their state (selection, 
 
 ## Adding PDFs
 
-**Drag and drop** one or more PDF files anywhere onto the window (Windows only). Each is copied into an `inbox` subfolder of the current folder, a topics file is
+**Drag and drop** one or more PDF files anywhere onto the window. Each is copied into an `inbox` subfolder of the top-level folder holding the currently selected PDF (or the first one, when nothing is selected), a topics file is
 generated automatically, and the last one is selected and opened for you.
 
 ## Topic (.toc) files

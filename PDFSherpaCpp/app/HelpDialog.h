@@ -9,6 +9,7 @@
 #define PDFSHERPA_APP_HELP_DIALOG_H
 
 #include <filesystem>
+#include <functional>
 #include <string>
 
 #include <wx/wx.h>
@@ -24,7 +25,12 @@ std::string markdown_to_html(const std::string& markdown);
 
 class HelpDialog : public wxDialog {
 public:
-    explicit HelpDialog(wxWindow* parent);
+    // `on_check_updates` backs the "Check for updates" button.  HELP.md tells
+    // the user that button is here, so it is not optional decoration: leaving
+    // it out made the shipped help document wrong.  Passing an empty function
+    // hides the button rather than offering one that does nothing.
+    explicit HelpDialog(wxWindow* parent,
+                        std::function<void()> on_check_updates = {});
 };
 
 // The About box, which also carries the licence notice.  This is not

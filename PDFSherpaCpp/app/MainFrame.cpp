@@ -7,6 +7,7 @@
 
 #include <wx/display.h>
 #include <wx/tglbtn.h>
+#include <wx/wrapsizer.h>
 
 #include "DropTarget.h"
 #include "FoldersDialog.h"
@@ -104,7 +105,12 @@ void MainFrame::build_ui()
     auto* outer = new wxBoxSizer(wxVERTICAL);
 
     // -- toolbar --
-    auto* bar = new wxBoxSizer(wxHORIZONTAL);
+    // A wrap sizer for the same reason as the viewer's nav bar: a horizontal
+    // box silently clips whatever does not fit off the right edge, and at a
+    // narrow window width that hid the Help button completely -- the feature
+    // was unreachable rather than merely cramped.  wxREMOVE_LEADING_SPACES
+    // only, so the last button on a row is not stretched to fill it.
+    auto* bar = new wxWrapSizer(wxHORIZONTAL, wxREMOVE_LEADING_SPACES);
     auto* choose = new wxButton(root, wxID_ANY, L"Folders…");
     choose->SetToolTip(L"Add, rename, reorder or remove the top-level folders");
     auto* refresh = new wxButton(root, wxID_ANY, L"Refresh");
@@ -124,7 +130,9 @@ void MainFrame::build_ui()
     bar->AddSpacer(12);
     bar->Add(show_pdfs_button_, 0, wxALL, 3);
     bar->Add(show_topics_button_, 0, wxALL, 3);
-    bar->AddStretchSpacer();
+    // No stretch spacer: in a wrap sizer it would consume the row and force
+    // everything after it onto the next line even when there is room.
+    bar->AddSpacer(12);
     bar->Add(bookmark, 0, wxALL, 3);
     bar->Add(help, 0, wxALL, 3);
 
@@ -181,6 +189,9 @@ void MainFrame::build_ui()
             config_.save_last_page(current_pdf_, page_index);
         }
     });
+    viewer_->set_fit_changed_handler([this](FitMode mode) {
+        config_.save_fit_pref(mode == FitMode::kPage ? "page" : "width");
+    });
     viewer_->set_bookmark_requested_handler(
         [this](int page_1based) { topics_->add_bookmark(page_1based); });
     viewer_->set_documents_changed_handler([this]() {
@@ -202,7 +213,10 @@ void MainFrame::build_ui()
         }
     });
     help->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-        HelpDialog dialog(this);
+        // The manual check always answers, including "up to date", and still
+        // offers a version the user previously skipped -- which is exactly
+        // what HELP.md promises this button does.
+        HelpDialog dialog(this, [this]() { updates_->start(true); });
         dialog.ShowModal();
     });
 
@@ -235,7 +249,10 @@ void MainFrame::bind_shortcuts()
     Bind(wxEVT_MENU, [this](wxCommandEvent&) { viewer_->next_match(); }, kFindNext);
     Bind(wxEVT_MENU, [this](wxCommandEvent&) { viewer_->prev_match(); }, kFindPrev);
     Bind(wxEVT_MENU, [this](wxCommandEvent&) {
-        HelpDialog dialog(this);
+        // The manual check always answers, including "up to date", and still
+        // offers a version the user previously skipped -- which is exactly
+        // what HELP.md promises this button does.
+        HelpDialog dialog(this, [this]() { updates_->start(true); });
         dialog.ShowModal();
     }, kHelp);
 

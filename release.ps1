@@ -73,9 +73,18 @@ function Bump($path, $pattern, $replacement) {
 }
 
 Bump "PDFSherpaCpp\app\Version.h" `
-     'kAppVersion = "[^"]+"' "kAppVersion = `"$Version`""
+     '#define PDFSHERPA_VERSION_STRING "[^"]+"' "#define PDFSHERPA_VERSION_STRING `"$Version`""
 Bump "PDFSherpaCpp\CMakeLists.txt" `
      'project\(PDFSherpaCpp VERSION [0-9]+\.[0-9]+\.[0-9]+' "project(PDFSherpaCpp VERSION $Version"
+
+# The .rc carries the numeric tuples Explorer shows, which cannot reference a
+# string macro and so must be rewritten separately.  test_version.cpp asserts
+# they stay in step with Version.h.
+$tupleVersion = ($Version -replace '\.', ',') + ",0"
+Bump "PDFSherpaCpp\app\PDFSherpa.rc" `
+     'FILEVERSION     [0-9]+,[0-9]+,[0-9]+,[0-9]+' "FILEVERSION     $tupleVersion"
+Bump "PDFSherpaCpp\app\PDFSherpa.rc" `
+     'PRODUCTVERSION  [0-9]+,[0-9]+,[0-9]+,[0-9]+' "PRODUCTVERSION  $tupleVersion"
 Bump "PDFSherpaCpp\installer-cpp.iss" `
      '#define AppVersion "[^"]+"' "#define AppVersion `"$Version`""
 # Deprecated, still bumped -- see the note above.
@@ -136,7 +145,8 @@ foreach ($asset in "installer\PDFSherpa-Setup.exe", "installer\PDFSherpa-Portabl
 }
 
 # --- Commit + push -----------------------------------------------------------
-git add PDFSherpaCpp\app\Version.h PDFSherpaCpp\CMakeLists.txt `
+git add PDFSherpaCpp\app\Version.h PDFSherpaCpp\app\PDFSherpa.rc `
+        PDFSherpaCpp\CMakeLists.txt `
         PDFSherpaCpp\installer-cpp.iss app.py installer.iss
 $staged = git diff --cached --name-only
 if ($staged) {

@@ -62,6 +62,10 @@ add_executable(PDFSherpa WIN32
     # process is DPI-virtualised: a blurry page, and every coordinate the
     # viewer computes disagreeing with what the OS reports.
     PDFSherpa.manifest
+    # The application icon and the version info Explorer shows.  Without this
+    # the exe, its Start-Menu shortcut and its uninstall entry all get the
+    # generic Windows icon.
+    PDFSherpa.rc
 )
 
 target_link_libraries(PDFSherpa PRIVATE

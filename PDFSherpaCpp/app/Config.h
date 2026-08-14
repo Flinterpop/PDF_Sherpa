@@ -97,7 +97,6 @@ public:
     // changed by the other app between load() and now survives.  All return
     // false if the file could not be written; a failed settings write is
     // reported, never fatal.
-    bool save_folder(const std::string& folder);
     bool save_last_pdf(const std::string& pdf_path);
     bool save_fit_pref(const std::string& mode);
     bool save_skip_version(const std::string& version);

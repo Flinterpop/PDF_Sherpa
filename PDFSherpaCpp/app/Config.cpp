@@ -331,12 +331,6 @@ bool Config::save_roots(std::vector<Root> roots)
     return merge_write(patch);
 }
 
-bool Config::save_folder(const std::string& folder)
-{
-    folder_ = folder;
-    return merge_write(json{{"folder", folder}});
-}
-
 bool Config::save_last_pdf(const std::string& pdf_path)
 {
     last_pdf_ = pdf_path;
