@@ -398,6 +398,68 @@ TEST_CASE("a root entry with no path is skipped", "[config][roots]")
     CHECK(config.roots()[0].path == "C:\\ok");
 }
 
+TEST_CASE("flat folders round-trip and are keyed by path", "[config][flat]")
+{
+    const ScopedAppData appdata;
+    Config config;
+    config.load();
+
+    CHECK_FALSE(config.is_flat_folder("C:\\ICD\\ASTERIX"));
+    REQUIRE(config.set_flat_folder("C:\\ICD\\ASTERIX", true));
+    CHECK(config.is_flat_folder("C:\\ICD\\ASTERIX"));
+    // A sibling is unaffected: this is per-folder, not a global mode.
+    CHECK_FALSE(config.is_flat_folder("C:\\ICD\\VMF"));
+
+    Config reloaded;
+    reloaded.load();
+    CHECK(reloaded.is_flat_folder("C:\\ICD\\ASTERIX"));
+}
+
+TEST_CASE("flat folder lookup ignores case and separator", "[config][flat]")
+{
+    const ScopedAppData appdata;
+    Config config;
+    config.load();
+    REQUIRE(config.set_flat_folder("C:\\ICD\\ASTERIX", true));
+
+    // Windows paths: the same folder reached by a different spelling must not
+    // read as a different folder, or the flag silently stops applying.
+    CHECK(config.is_flat_folder("c:/icd/asterix"));
+    CHECK(config.is_flat_folder("C:\\icd\\Asterix\\"));
+}
+
+TEST_CASE("un-flattening removes the entry", "[config][flat]")
+{
+    const ScopedAppData appdata;
+    Config config;
+    config.load();
+
+    REQUIRE(config.set_flat_folder("C:\\docs", true));
+    REQUIRE(config.set_flat_folder("C:\\docs", false));
+    CHECK_FALSE(config.is_flat_folder("C:\\docs"));
+
+    const nlohmann::json after = nlohmann::json::parse(appdata.read_raw());
+    REQUIRE(after.contains("flat_folders"));
+    CHECK(after["flat_folders"].empty());
+
+    Config reloaded;
+    reloaded.load();
+    CHECK_FALSE(reloaded.is_flat_folder("C:\\docs"));
+}
+
+TEST_CASE("setting a flat folder twice does not duplicate it", "[config][flat]")
+{
+    const ScopedAppData appdata;
+    Config config;
+    config.load();
+
+    REQUIRE(config.set_flat_folder("C:\\docs", true));
+    REQUIRE(config.set_flat_folder("C:\\docs", true));
+
+    const nlohmann::json after = nlohmann::json::parse(appdata.read_raw());
+    CHECK(after["flat_folders"].size() == 1);
+}
+
 TEST_CASE("a Python-written profile loads whole", "[config]")
 {
     const ScopedAppData appdata;

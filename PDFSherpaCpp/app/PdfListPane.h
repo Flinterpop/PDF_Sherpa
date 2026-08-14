@@ -61,6 +61,16 @@ public:
     {
         on_favorites_changed_ = std::move(h);
     }
+
+    // Whether a folder is shown as a flat list of every PDF beneath it, and
+    // the toggle for it.  Both are supplied by the frame, which owns Config;
+    // the pane deliberately does not reach into settings itself.
+    void set_flat_hooks(std::function<bool(const std::filesystem::path&)> query,
+                        std::function<void(const std::filesystem::path&)> toggle)
+    {
+        is_flat_folder_ = std::move(query);
+        on_toggle_flat_ = std::move(toggle);
+    }
     bool is_favorite(const std::filesystem::path& pdf_path) const;
     void toggle_favorite(const std::filesystem::path& pdf_path);
 
@@ -115,6 +125,8 @@ private:
 
     std::function<void(const std::filesystem::path&)> on_selected_;
     std::function<void()> on_favorites_changed_;
+    std::function<bool(const std::filesystem::path&)> is_flat_folder_;
+    std::function<void(const std::filesystem::path&)> on_toggle_flat_;
 };
 
 }  // namespace pdfsherpa

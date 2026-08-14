@@ -249,8 +249,13 @@ void PdfListPane::rebuild_tree()
     std::vector<wxTreeItemId> root_items;
     root_items.reserve(roots_.size());
     for (const Root& configured : roots_) {
-        const wxTreeItemId item =
-            tree_->AppendItem(root, wxString::FromUTF8(configured.name));
+        wxString label = wxString::FromUTF8(configured.name);
+        if (is_flat_folder_ && is_flat_folder_(path_from_utf8(configured.path))) {
+            // Say so on the row: a flattened folder with no subfolder nodes
+            // is otherwise indistinguishable from one that simply has none.
+            label += L"  (flat)";
+        }
+        const wxTreeItemId item = tree_->AppendItem(root, label);
         tree_->SetItemBold(item, true);
         folder_items.emplace(configured.name, item);
         dir_by_item_.emplace(item, configured.name);
@@ -273,7 +278,13 @@ void PdfListPane::rebuild_tree()
         }
         const wxTreeItemId root_item = root_items[root_index];
         const std::string& root_name = roots_[root_index].name;
+        const fs::path root_path = path_from_utf8(roots_[root_index].path);
         if (rel.empty()) {
+            return root_item;
+        }
+        // A flattened root swallows everything beneath it: every PDF hangs
+        // directly off it and no subfolder node is created at all.
+        if (is_flat_folder_ && is_flat_folder_(root_path)) {
             return root_item;
         }
 
@@ -294,21 +305,31 @@ void PdfListPane::rebuild_tree()
                                                     : slash - start);
             if (!component.empty()) {
                 prefix += "/" + component;
+                // The on-disk folder this node stands for.
+                const fs::path here =
+                    root_path / path_from_utf8(
+                                    prefix.substr(root_name.size() + 1));
+
                 const auto found = folder_items.find(prefix);
                 if (found != folder_items.end()) {
                     parent = found->second;
                 } else {
-                    const wxTreeItemId item = tree_->AppendItem(
-                        parent, wxString::FromUTF8(component));
+                    wxString label = wxString::FromUTF8(component);
+                    if (is_flat_folder_ && is_flat_folder_(here)) {
+                        label += L"  (flat)";
+                    }
+                    const wxTreeItemId item = tree_->AppendItem(parent, label);
                     tree_->SetItemBold(item, true);
                     folder_items.emplace(prefix, item);
                     dir_by_item_.emplace(item, prefix);
-                    // The on-disk folder, for "Open folder in Explorer".
-                    folder_path_by_item_.emplace(
-                        item, path_from_utf8(roots_[root_index].path) /
-                                  path_from_utf8(prefix.substr(
-                                      roots_[root_index].name.size() + 1)));
+                    folder_path_by_item_.emplace(item, here);
                     parent = item;
+                }
+
+                // Stop at the nearest flattened ancestor: everything below it
+                // is listed against it rather than getting nodes of its own.
+                if (is_flat_folder_ && is_flat_folder_(here)) {
+                    return parent;
                 }
             }
             if (slash == std::string::npos) {
@@ -560,6 +581,19 @@ void PdfListPane::on_item_menu(wxTreeEvent& event)
     const auto dir = folder_path_by_item_.find(item);
     if (dir != folder_path_by_item_.end()) {
         const fs::path path = dir->second;
+        const int kFlat = wxWindow::NewControlId();
+
+        if (on_toggle_flat_) {
+            // A check item rather than two commands: this is a state of the
+            // folder, and the tick is how the user sees which state it is in.
+            wxMenuItem* flat = menu.AppendCheckItem(kFlat, L"Show as flat list");
+            flat->Check(is_flat_folder_ && is_flat_folder_(path));
+            menu.Bind(wxEVT_MENU, [this, path](wxCommandEvent&) {
+                on_toggle_flat_(path);  // flips, persists, and rebuilds
+            }, kFlat);
+            menu.AppendSeparator();
+        }
+
         menu.Append(kReveal, L"Open folder in Explorer");
         menu.Bind(wxEVT_MENU, [this, path](wxCommandEvent&) {
             ::ShellExecuteW(nullptr, nullptr, path.c_str(), nullptr, nullptr,

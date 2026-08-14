@@ -174,6 +174,19 @@ void MainFrame::build_ui()
     pdf_list_->set_favorites_changed_handler([this]() {
         config_.save_favorites(pdf_list_->favorites());
     });
+    pdf_list_->set_flat_hooks(
+        [this](const fs::path& folder) {
+            return config_.is_flat_folder(path_to_utf8(folder));
+        },
+        [this](const fs::path& folder) {
+            const std::string key = path_to_utf8(folder);
+            config_.set_flat_folder(key, !config_.is_flat_folder(key));
+            // Rebuild so the change is visible immediately; the expansion
+            // state is reapplied because flattening removes folder rows the
+            // tree was remembering.
+            pdf_list_->rescan();
+            pdf_list_->set_expanded_folders(config_.expanded_folders());
+        });
 
     topics_->set_page_requested_handler([this](int page_1based) {
         viewer_->goto_page(page_1based - 1);

@@ -662,12 +662,63 @@ void ViewerPane::on_size(wxSizeEvent& event)
 
 void ViewerPane::on_mouse_wheel(wxMouseEvent& event)
 {
-    // Ctrl+wheel zooms, plain wheel scrolls -- the same split app.py uses.
+    // Ctrl+wheel zooms.
     if (event.ControlDown()) {
         change_zoom((event.GetWheelRotation() > 0) ? kZoomStep : 1.0F / kZoomStep);
         return;
     }
-    event.Skip();
+
+    if (!doc_.is_open() || event.GetWheelRotation() == 0) {
+        event.Skip();
+        return;
+    }
+
+    // Plain wheel reads continuously: it scrolls within the page, and rolling
+    // past an edge turns to the next or previous one.  Paging unconditionally
+    // would make a zoomed-in page impossible to read, and scrolling only would
+    // strand the reader at the bottom of every page -- so the wheel does
+    // whichever is left to do.
+    const bool down = event.GetWheelRotation() < 0;
+
+    int unit_x = 0;
+    int unit_y = 0;
+    canvas_->GetScrollPixelsPerUnit(&unit_x, &unit_y);
+    int view_x = 0;
+    int view_y = 0;
+    canvas_->GetViewStart(&view_x, &view_y);
+    int virtual_w = 0;
+    int virtual_h = 0;
+    canvas_->GetVirtualSize(&virtual_w, &virtual_h);
+    const wxSize client = canvas_->GetClientSize();
+
+    const int top = view_y * ((unit_y > 0) ? unit_y : 1);
+    // A page shorter than the viewport is "at both ends" at once, which is
+    // exactly right: in fit-page every scroll should turn the page.
+    const bool at_top = top <= 0;
+    const bool at_bottom = (top + client.y) >= (virtual_h - 1);
+
+    if (down && at_bottom) {
+        if (current_page_ + 1 < page_count_) {
+            goto_page(current_page_ + 1);   // lands at the top of the new page
+        }
+        return;
+    }
+    if (!down && at_top) {
+        if (current_page_ > 0) {
+            goto_page(current_page_ - 1);
+            // Coming backwards, land at the BOTTOM of the previous page, so
+            // reading up is the mirror of reading down rather than a jump to
+            // a place the reader has already been.
+            int new_w = 0;
+            int new_h = 0;
+            canvas_->GetVirtualSize(&new_w, &new_h);
+            const int last = std::max(0, new_h - canvas_->GetClientSize().y);
+            canvas_->Scroll(0, (unit_y > 0) ? (last / unit_y) : 0);
+        }
+        return;
+    }
+
+    event.Skip();  // ordinary scrolling within the page
 }
 
 // ---------------------------------------------------------------------------

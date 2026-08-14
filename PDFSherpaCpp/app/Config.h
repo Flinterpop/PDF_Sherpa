@@ -92,6 +92,12 @@ public:
     // 0-based page index, as the Python app stores it.
     std::optional<int> last_page(const std::filesystem::path& pdf_path) const;
 
+    // Whether a folder is shown as a flat list of every PDF beneath it rather
+    // than as a folder tree.  Any folder can be flattened, not just a
+    // top-level one, so this is keyed by absolute path.
+    bool is_flat_folder(const std::string& path) const;
+    bool set_flat_folder(const std::string& path, bool flat);
+
     // Each of these is one Python update_config({...}) call: it merges just
     // its own keys into the file on disk and writes it back, so a setting
     // changed by the other app between load() and now survives.  All return
@@ -125,6 +131,7 @@ private:
     bool show_pdf_list_ = true;
     bool show_topics_ = true;
     std::vector<std::string> expanded_folders_;
+    std::vector<std::string> flat_folders_;
     std::vector<std::string> favorites_;
     // Insertion-ordered oldest-first, mirroring the JSON object on disk.
     std::vector<std::pair<std::string, int>> last_pages_;

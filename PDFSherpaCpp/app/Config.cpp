@@ -174,6 +174,23 @@ std::vector<std::string> string_array(const json& document, const char* key,
     return out;
 }
 
+// The comparison key for a FOLDER path.
+//
+// page_key() alone is not enough here: it preserves a trailing separator, so
+// "C:\ICD\ASTERIX" and "C:\ICD\ASTERIX\" key differently even though they are
+// the same folder.  Both spellings occur in the wild -- Explorer and the
+// registry's InstallLocation both hand back the trailing form -- and a folder
+// that silently stopped being flat depending on how its path was spelled would
+// be a maddening bug to chase.
+std::string folder_key(const std::string& path)
+{
+    std::string key = page_key(path_from_utf8(path));
+    while (key.size() > 1 && (key.back() == '\\' || key.back() == '/')) {
+        key.pop_back();
+    }
+    return key;
+}
+
 json to_array(const std::vector<std::string>& values)
 {
     json array = json::array();
@@ -286,6 +303,11 @@ void Config::load()
                                      static_cast<std::size_t>(-1));
     favorites_ = string_array(document, "favorites", kMaxFavorites);
 
+    // Any folder can be flattened, not just a top-level one, so the cap is
+    // well above the five roots -- it exists only to stop a corrupted file
+    // growing without bound.
+    flat_folders_ = string_array(document, "flat_folders", 4096);
+
     last_pages_.clear();
     if (document.contains("last_pages") && document["last_pages"].is_object()) {
         for (const auto& entry : document["last_pages"].items()) {
@@ -348,6 +370,38 @@ bool Config::save_skip_version(const std::string& version)
 {
     skip_version_ = version;
     return merge_write(json{{"skip_version", version}});
+}
+
+bool Config::is_flat_folder(const std::string& path) const
+{
+    const std::string key = folder_key(path);
+    for (const std::string& flat : flat_folders_) {
+        if (folder_key(flat) == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Config::set_flat_folder(const std::string& path, bool flat)
+{
+    assert(!path.empty() && "a flat folder needs a path");
+    const std::string key = folder_key(path);
+
+    for (auto it = flat_folders_.begin(); it != flat_folders_.end(); ++it) {
+        if (folder_key(*it) == key) {
+            if (flat) {
+                return true;  // already flat; nothing to write
+            }
+            flat_folders_.erase(it);
+            return merge_write(json{{"flat_folders", to_array(flat_folders_)}});
+        }
+    }
+    if (!flat) {
+        return true;  // already a tree; nothing to write
+    }
+    flat_folders_.push_back(path);
+    return merge_write(json{{"flat_folders", to_array(flat_folders_)}});
 }
 
 bool Config::save_expanded_folders(std::vector<std::string> folders)
