@@ -1,4 +1,34 @@
 # -*- mode: python ; coding: utf-8 -*-
+#
+# DEPRECATED -- this builds the retired Python/Tkinter app.
+#
+# PDFSherpaCpp/ is the shipping implementation.  This spec is kept only so an
+# old build can be reproduced for archaeology (bisecting a historic bug,
+# checking what a past release actually did).
+#
+# It refuses to run without an explicit opt-in because of what it produces:
+# dist\PDFSherpa.exe, which release.ps1 packages as PDFSherpa-Setup.exe and
+# PDFSherpa-Portable.zip -- the exact two asset names every installed copy
+# polls for.  Regenerating one by accident and publishing it would silently
+# "update" every install back onto the dead app.
+#
+# NEVER publish what this produces.
+
+import os
+import sys
+
+if not os.environ.get("PDFSHERPA_BUILD_DEPRECATED_PYTHON"):
+    raise SystemExit(
+        "PDFSherpa.spec builds the DEPRECATED Python app and is guarded off.\n"
+        "The shipping app is PDFSherpaCpp/ -- see README.md.\n"
+        "\n"
+        "For local archaeology only, set PDFSHERPA_BUILD_DEPRECATED_PYTHON=1.\n"
+        "Never publish the result: it claims the same asset names as the\n"
+        "C++ release and would downgrade every existing install."
+    )
+
+print("WARNING: building the DEPRECATED Python app. Do not publish this.",
+      file=sys.stderr)
 
 
 a = Analysis(

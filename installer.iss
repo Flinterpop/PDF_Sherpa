@@ -1,8 +1,20 @@
-; Inno Setup script for PDF Sherpa
-; Build with:  iscc installer.iss   (produces installer\PDFSherpa-Setup.exe)
-; Requires the app to be built first:  python -m PyInstaller PDFSherpa.spec
-; Releases also ship installer\PDFSherpa-Portable.zip (just the exe, zipped);
-; release.ps1 does the whole cycle -- see the README's build section.
+; DEPRECATED -- packages the retired Python/Tkinter app.
+;
+; PDFSherpaCpp\installer-cpp.iss is the shipping installer.  This one is kept
+; only so an old build can be reproduced for archaeology.
+;
+; It refuses to compile without /DAllowDeprecatedPythonBuild because it emits
+; installer\PDFSherpa-Setup.exe -- the exact asset name every installed copy
+; polls for.  Publishing it would silently downgrade every install back onto
+; the dead app.  NEVER publish what this produces.
+;
+; Build (archaeology only):
+;   iscc /DAllowDeprecatedPythonBuild installer.iss
+; Requires:  set PDFSHERPA_BUILD_DEPRECATED_PYTHON=1 && python -m PyInstaller PDFSherpa.spec
+
+#ifndef AllowDeprecatedPythonBuild
+  #error This script builds the DEPRECATED Python app. The shipping installer is PDFSherpaCpp\installer-cpp.iss. For local archaeology only, pass /DAllowDeprecatedPythonBuild -- and never publish the result.
+#endif
 
 #define AppName "PDF Sherpa"
 #define AppVersion "1.3.12"
