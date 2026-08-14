@@ -31,6 +31,18 @@ This matters because both produce **`PDFSherpa-Setup.exe`** and **`PDFSherpa-Por
 
 Note this is the *opposite* rule from the version lockstep below: a deprecated file keeps getting its version bumped but must not be built.
 
+## Linux and macOS were retired at v2.0.0
+
+Up to v1.3.12 this was a cross-platform app: `app.py` carried Linux/macOS support, `build-appimage.sh` produced a **self-updating** `PDFSherpa-x86_64.AppImage` (plus a `.zsync`), and `install-linux.sh` / `run.sh` installed and launched it. v1.3.12's release assets still include the AppImage and its `.zsync`.
+
+That is over. The C++ app is Windows-only — wxWidgets is portable, but the viewer, the drop target, the shell integration, the updater's handoff batch and the Inno Setup packaging are all Win32 — and the scripts and cross-platform docs were removed in the same commit that says so. The Python code in `app.py` still contains its platform branches; it is frozen reference and is not the place to revive anything.
+
+Consequences worth knowing:
+
+- A Linux user on the self-updating AppImage will find no AppImage asset in releases from v2.0.0 on. Their updater goes quiet and they stay on v1.3.12; the assets remain on that release for anyone who needs them.
+- Do not describe this app as cross-platform anywhere, and do not restore `~/.config/PDFGuide/config.json` as a documented path.
+- Reviving Linux means a new implementation, not a revert: it would need a non-Win32 viewer, drop target, shell integration and packaging path.
+
 ## Version lockstep
 
 One version number, bumped across every one of these in a single commit, always greater than the highest existing tag:

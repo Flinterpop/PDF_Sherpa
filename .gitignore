@@ -2,15 +2,12 @@
 __pycache__/
 *.py[cod]
 
-# Local virtual environment (Linux/macOS launcher)
+# Local virtual environment (used by tests/tocgen_oracle.py)
 .venv/
 
-# PyInstaller / build outputs
+# PyInstaller / CMake build outputs
 build/
 dist/
-# AppImage build artifacts (belong in dist/; ignore stray ones too)
-*.AppImage
-*.AppImage.zsync
 # Compiled installer -- published as a GitHub Release asset, not committed
 installer/
 

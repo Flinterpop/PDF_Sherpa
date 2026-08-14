@@ -26,10 +26,8 @@ The original Python/Tkinter implementation (`app.py`, `tocgen.py`) is **deprecat
 
 Both read and write the same `%APPDATA%\PDFGuide\config.json`, and the same `.toc` / `.bookmarks.json` sidecars, so a profile written by either still works in the other.
 
-
 ## Screenshot
 <img width="1427" height="1209" alt="image" src="https://github.com/user-attachments/assets/63af4bb8-e27c-4956-ace1-ff0c47cd110b" />
-
 
 ## Run
 
@@ -60,95 +58,6 @@ re-runs the installer silently, the portable copy swaps its own exe — or to
 skip that version (`"skip_version"` in the config file). A manual **Check for
 updates** button lives at the bottom of the Help window. To disable the launch
 check, add `"check_updates": false` to `%APPDATA%\PDFGuide\config.json`.
-
-## Installing (Linux)
-
-The easiest way — grab the **`PDFSherpa-x86_64.AppImage`** from the
-[latest release](https://github.com/Flinterpop/PDF_Sherpa/releases/latest).
-It bundles Python, Tcl/Tk, PyMuPDF and Pillow, so there's nothing to install:
-
-```
-chmod +x PDFSherpa-x86_64.AppImage
-./PDFSherpa-x86_64.AppImage
-```
-
-It needs a 64-bit desktop with FUSE 3 (standard on Ubuntu 22.04+, Fedora,
-etc.) and a glibc at least as new as the build host's.
-
-The AppImage **updates itself**: on launch it checks the releases and, when a
-newer version is available, offers to download it and replace the running
-AppImage in place, then relaunch. Update information is embedded and a
-companion `.zsync` is published, so external tools (AppImageUpdate, appimaged)
-can update it too.
-
-To add it to your application menu, from a clone of this repo run:
-
-```
-./install-linux.sh --appimage                 # auto-finds the AppImage in
-                                              #   ./dist or ~/Applications
-./install-linux.sh --appimage ~/Downloads/PDFSherpa-x86_64.AppImage
-```
-
-This copies the AppImage into `~/Applications/` (behind a version-independent
-`PDFSherpa.AppImage` symlink), installs the icon, and writes the `.desktop`
-entry; `./install-linux.sh --remove` takes it back out. Alternatively, open the
-AppImage once with [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever)
-or AppImageLauncher, which also handle menu integration and updates.
-
-## Running from source (Linux / macOS)
-
-PDF Sherpa is a Tkinter app and also runs from source on Linux and macOS. A
-helper script sets everything up on first launch:
-
-```
-./run.sh                 # last-used folder (or ./pdfs)
-./run.sh ~/Documents     # open a specific folder
-```
-
-On its first run `run.sh` creates a local `.venv`, installs **PyMuPDF** and
-**Pillow** into it, and then launches the app; later runs just launch. You need
-Python 3.9+ with Tkinter — Tkinter ships separately on many distros:
-
-- Debian/Ubuntu: `sudo apt install python3-tk`
-- Fedora: `sudo dnf install python3-tkinter`
-- Arch: `sudo pacman -S tk`
-
-To add PDF Sherpa to your application menu (a per-user `.desktop` entry, no
-root needed) that launches this source checkout via `run.sh`:
-
-```
-./install-linux.sh            # menu entry that runs from source
-./install-linux.sh --appimage # ...or one that runs the bundled AppImage
-./install-linux.sh --remove   # remove it
-```
-
-Settings live in `~/.config/PDFGuide/config.json` (following the XDG spec).
-Platform notes: **Open in default viewer** uses `xdg-open` (Linux) / `open`
-(macOS), and **Show in file manager** selects the file via the freedesktop
-FileManager1 D-Bus interface, falling back to opening its folder. Drag-and-drop
-from the file manager is Windows-only; use **Choose folder…** or drop files
-into the folder directly. A source run doesn't self-update — `git pull` to
-upgrade — but the **AppImage build updates itself** (see below).
-
-## Building the AppImage (Linux)
-
-To produce the bundled `PDFSherpa-x86_64.AppImage` yourself:
-
-```
-./build-appimage.sh        # -> dist/PDFSherpa-x86_64.AppImage (+ .zsync)
-```
-
-It freezes the app with PyInstaller (pulling in Tcl/Tk, PyMuPDF and Pillow),
-assembles an AppDir, and packs it with `appimagetool` using the statically
-linked type2 runtime (so the result runs on FUSE-3-only systems). It also
-embeds AppImage update information and writes a companion `.zsync`, so the
-built AppImage self-updates from the GitHub `latest` release (and
-AppImageUpdate / appimaged can update it too). The output name is
-**version-less** on purpose so `latest` always carries that exact asset —
-upload both `PDFSherpa-x86_64.AppImage` and its `.zsync` to the release. Build
-tooling and downloads are cached under `build/`; both `build/` and `dist/`
-stay out of git. Build on the oldest glibc you want to support — the AppImage
-requires a glibc at least as new as the build host's.
 
 ## Standalone build & installer (Windows)
 
@@ -259,9 +168,7 @@ Page numbers are **1-based** (page 1 = the first page).
 - The **title bar** shows the app version and the current folder; the **Help**
   button opens the rendered user guide, and hovering the less obvious buttons
   shows a tooltip.
-- **Right-click** a PDF for **Open PDF** / **Show in file manager** (*Reveal in
-  Explorer* on Windows, *Reveal in Finder* on macOS); right-click a folder to
-  open it in your file manager.
+- **Right-click** a PDF for **Open PDF** / **Reveal in Explorer**; right-click a folder to open it in Explorer.
 - The app remembers the **last page you were on in each PDF** and returns there
   when you reopen it (positions are kept for the 200 most recently viewed
   PDFs, so the settings file never grows without bound).
@@ -277,8 +184,7 @@ Page numbers are **1-based** (page 1 = the first page).
   for each (bookmarks first, text headings as a fallback), and the last one
   dropped is selected and opened. Dropping a PDF whose name is already in the
   inbox asks before replacing it, and an existing (hand-edited) `.toc` is never
-  overwritten. On Linux/macOS, copy PDFs into the folder and press **Refresh**
-  to get the same auto-generated topics.
+  overwritten.
 - Viewer controls: **Prev/Next**, **+/−** zoom, **Fit width**, **Full page**,
   and mouse-wheel scrolling. Your **Fit width / Full page** choice is remembered
   and re-applied to every PDF you open — and it persists across app runs
@@ -292,11 +198,7 @@ Page numbers are **1-based** (page 1 = the first page).
 
 ## Settings file
 
-Everything the app remembers lives in one JSON file —
-`%APPDATA%\PDFGuide\config.json` on Windows, `~/.config/PDFGuide/config.json`
-on Linux/macOS (the folder keeps the app's former name so settings saved
-before the rename survive). It is safe to edit while the app is closed, or to
-delete for a fresh start.
+Everything the app remembers lives in one JSON file — `%APPDATA%\PDFGuide\config.json` (the folder keeps the app's former name so settings saved before the rename survive). It is safe to edit while the app is closed, or to delete for a fresh start.
 
 | Key | Meaning |
 |-----|---------|
