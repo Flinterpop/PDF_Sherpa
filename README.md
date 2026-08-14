@@ -1,53 +1,44 @@
 # PDF Sherpa
 
 [![GitHub repo](https://img.shields.io/badge/GitHub-Flinterpop%2FPDF__Sherpa-181717?logo=github)](https://github.com/Flinterpop/PDF_Sherpa)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078D6)
-![Python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)
-![GUI](https://img.shields.io/badge/GUI-Tkinter-FFD43B)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
+![Language](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)
+![GUI](https://img.shields.io/badge/GUI-wxWidgets-2A5DB0)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
-A small desktop app (Tkinter) that lets you browse PDFs by topic.
+*Last updated: 13 Aug 2026*
 
-- **Left pane** — lists every PDF in a folder (the last folder you chose, or
-  a `./pdfs` subfolder by default).
-- **Middle pane** — when you select a PDF, shows the topics and page numbers from
-  its companion metadata file (same base name, `.toc` or `.json`), with your
-  own bookmarks in a resizable list above them.
+A small desktop app that lets you browse PDFs by topic.
+
+- **Left pane** — lists every PDF in a folder (the last folder you chose, or a `./pdfs` subfolder by default).
+- **Middle pane** — when you select a PDF, shows the topics and page numbers from its companion metadata file (same base name, `.toc` or `.json`), with your own bookmarks in a resizable list above them.
 - **Right pane** — an embedded viewer. Click a topic and the PDF jumps to that page.
-- **Search everywhere** — filter the PDF list by name, filter the topic list,
-  and full-text search inside the open PDF with highlighted matches.
-- **Highlight text** — drag-select words on the page and save them as real PDF
-  highlight annotations, into the original or an `(ann)` copy.
-- **Bookmarks** — mark pages with your own names (`Ctrl+B`); they show in
-  their own list above the Topics and are saved beside the PDF in
-  `name.bookmarks.json`. PDFs that have bookmarks are shown in **blue** in the
-  list, so you can spot them at a glance.
-- **Drag & drop** (Windows) — drop a PDF anywhere on the window to file it into
-  an `inbox` subfolder with an auto-generated topics file. On Linux/macOS, copy
-  PDFs into the folder and press Refresh instead.
+- **Search everywhere** — filter the PDF list by name, filter the topic list, and full-text search inside the open PDF with highlighted matches.
+- **Highlight text** — drag-select words on the page and save them as real PDF highlight annotations, into the original or an `(ann)` copy.
+- **Bookmarks** — mark pages with your own names (`Ctrl+B`); they show in their own list above the Topics and are saved beside the PDF in `name.bookmarks.json`. PDFs that have bookmarks are shown in **blue** in the list, so you can spot them at a glance.
+- **Drag & drop** — drop a PDF anywhere on the window to file it into an `inbox` subfolder with an auto-generated topics file.
+
+## Implementation
+
+**`PDFSherpaCpp/` is the app.** It is C++20 on wxWidgets and MuPDF, and it is what ships as `PDFSherpa-Setup.exe` and `PDFSherpa-Portable.zip`.
+
+The original Python/Tkinter implementation (`app.py`, `tocgen.py`) is **deprecated** and kept in-tree only as a historical reference. It is not built, packaged, or shipped, and its build path is guarded off — see [CLAUDE.md](CLAUDE.md). A difference between the two is not automatically a bug in the C++ app.
+
+Both read and write the same `%APPDATA%\PDFGuide\config.json`, and the same `.toc` / `.bookmarks.json` sidecars, so a profile written by either still works in the other.
+
 
 ## Screenshot
 <img width="1427" height="1209" alt="image" src="https://github.com/user-attachments/assets/63af4bb8-e27c-4956-ace1-ff0c47cd110b" />
 
 
-## Install
-
-```
-pip install -r requirements.txt
-```
-
-(That pulls in **PyMuPDF** for rendering and **Pillow** for displaying pages.)
-
 ## Run
 
 ```
-python app.py            # last chosen folder (or the ./pdfs subfolder)
-python app.py C:\docs    # or point it at any folder
+PDFSherpa.exe            # last chosen folder (or the ./pdfs subfolder)
+PDFSherpa.exe C:\docs    # or point it at any folder
 ```
 
-You can also switch folders at runtime with the **Choose folder…** button —
-the chosen folder is remembered and reopened on the next launch (a
-command-line folder overrides it).
+You can also switch folders at runtime with the **Choose folder…** button — the chosen folder is remembered and reopened on the next launch (a command-line folder overrides it).
 
 ## Installing (Windows)
 
@@ -169,22 +160,38 @@ push, publish the GitHub release, reinstall locally):
 .\release.ps1 1.3.8 -NotesFile notes.md # or hand-written notes
 ```
 
-Or do the steps by hand — build the one-file exe, then compile the installer
-and zip the portable variant:
+Or do the steps by hand — build the exe, then compile the installer and zip the portable variant:
 
 ```
-python -m PyInstaller PDFSherpa.spec       # -> dist\PDFSherpa.exe
-iscc installer.iss                         # -> installer\PDFSherpa-Setup.exe
-powershell Compress-Archive -Force dist\PDFSherpa.exe installer\PDFSherpa-Portable.zip
+cmake --preset windows-static                  # in PDFSherpaCpp\
+cmake --build build --config Release           # -> build\app\Release\PDFSherpa.exe
+ctest --test-dir build -C Release              # the whole suite must be green
+iscc PDFSherpaCpp\installer-cpp.iss            # -> installer\PDFSherpa-Setup.exe
+powershell Compress-Archive -Force PDFSherpaCpp\build\app\Release\PDFSherpa.exe installer\PDFSherpa-Portable.zip
 ```
 
-The compiled artifacts are not committed to the repo -- publish them as GitHub
-Release assets (both names are what the in-app updater looks for, so keep
-them exact):
+The compiled artifacts are not committed to the repo — publish them as GitHub Release assets (both names are what the in-app updater looks for, so keep them exact):
 
 ```
 gh release create v<version> installer\PDFSherpa-Setup.exe installer\PDFSherpa-Portable.zip
 ```
+
+### Build prerequisites
+
+- **Visual Studio 18 (2026)** with the C++ toolset (`v145`), and CMake 3.21+.
+- **vcpkg** at `C:\vcpkg`, classic mode, triplet `x64-windows-static`:
+
+  ```
+  C:\vcpkg\vcpkg.exe install wxwidgets:x64-windows-static md4c:x64-windows-static catch2:x64-windows-static nlohmann-json:x64-windows-static
+  ```
+
+- **MuPDF 1.28.2**, extracted to `C:\source\mupdf` (override with `-DMUPDF_DIR=...`). It is not a vcpkg package and is deliberately not vendored into this repo — it is 190 MB of third-party source. Download `mupdf-1.28.2-source.tar.gz` from the [MuPDF archive](https://mupdf.com/downloads/archive/) and build it with:
+
+  ```
+  msbuild platform/win32/mupdf.sln -t:libmupdf -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v145 -p:ForceImportBeforeCppTargets=<repo>\PDFSherpaCpp\third_party\mupdf-static-runtime.props
+  ```
+
+  That props file is what forces MuPDF onto the static CRT (`/MT`) and switches off the features PDF Sherpa never uses — OCR, barcodes, the non-PDF document handlers, and the CJK fallback fonts. Without it the executable is roughly 40 MB instead of 22 MB, and mixes two C runtimes. See `PDFSherpaCpp/cmake/MuPdf.cmake` for the details.
 
 ## Metadata files
 
@@ -327,4 +334,23 @@ keyboard focus, so you can still navigate the lists with the keyboard.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [GNU Affero General Public License v3.0 or later](LICENSE).
+
+**Why AGPL and not MIT.** PDF Sherpa renders, searches and annotates PDFs with [MuPDF](https://mupdf.com/) (Artifex Software), which is licensed AGPL-3.0-or-later. The shipped executable links MuPDF statically, so the combined work is conveyed under the AGPL and this repository is licensed to match. Earlier releases carried an MIT notice while already bundling MuPDF through PyMuPDF; the licence was corrected when the C++ port made that linkage explicit. Section 13 (the network clause) has no practical effect here — PDF Sherpa is a desktop application and offers no service over a network — so in practice the obligation is simply that the corresponding source stays published, which it is, in this repository.
+
+If you need PDF Sherpa under different terms, MuPDF is also available under a commercial licence from Artifex.
+
+### Third-party components
+
+| Component | Licence | Used for |
+|---|---|---|
+| [MuPDF](https://mupdf.com/) | AGPL-3.0-or-later | Rendering, text extraction, search, highlight annotations |
+| [wxWidgets](https://www.wxwidgets.org/) | LGPL-2.0-or-later **with the wxWindows exception** | The user interface |
+| [md4c](https://github.com/mity/md4c) | MIT | Rendering this help document in-app |
+| [nlohmann/json](https://github.com/nlohmann/json) | MIT | Settings and sidecar files |
+| [Catch2](https://github.com/catchorg/Catch2) | BSL-1.0 | Tests only; not shipped |
+
+Notes:
+
+- The wxWindows exception is what permits static linking of wxWidgets without imposing further conditions on the combined work.
+- Catch2 is a build-time dependency of the test target and is not part of any released binary.
