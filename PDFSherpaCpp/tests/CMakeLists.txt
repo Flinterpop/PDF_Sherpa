@@ -3,6 +3,7 @@ find_package(Catch2 3 CONFIG REQUIRED)
 add_executable(sherpa_tests
     test_metadata.cpp
     test_config.cpp
+    test_favorites_file.cpp
     test_pdf_document.cpp
     test_tocgen.cpp
     test_source_literals.cpp

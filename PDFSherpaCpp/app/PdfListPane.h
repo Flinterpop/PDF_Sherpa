@@ -83,6 +83,11 @@ private:
     void on_filter_changed(wxCommandEvent& event);
     void on_item_menu(wxTreeEvent& event);
     void on_favorite_menu(wxContextMenuEvent& event);
+    // The "..." menu beside the Favorites heading.
+    void show_favorites_menu();
+    void clear_favorites();
+    void export_favorites();
+    void import_favorites();
     void open_externally(const std::filesystem::path& path) const;
     void reveal_in_explorer(const std::filesystem::path& path) const;
 

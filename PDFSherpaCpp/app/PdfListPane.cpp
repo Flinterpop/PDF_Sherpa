@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cassert>
+#include <fstream>
+#include <sstream>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -9,7 +11,10 @@
 #include <windows.h>  // WM_HSCROLL, to undo EnsureVisible's sideways scroll
 #include <shellapi.h>  // ShellExecuteW, for Open PDF / Reveal in Explorer
 
+#include <wx/filedlg.h>
+
 #include "Config.h"
+#include "FavoritesFile.h"
 #include "Metadata.h"
 #include "PathUtf8.h"
 
@@ -76,8 +81,20 @@ void PdfListPane::build_ui()
 
     auto* favorites_panel = new wxPanel(splitter_, wxID_ANY);
     auto* fav_sizer = new wxBoxSizer(wxVERTICAL);
-    fav_sizer->Add(new wxStaticText(favorites_panel, wxID_ANY, L"Favorites"), 0,
-                   wxLEFT | wxTOP, 4);
+
+    // Heading row: the label, and a "..." button opening the list-wide
+    // actions (clear, export, import).  Those act on the whole list, so they
+    // do not belong on a per-row right-click menu.
+    auto* heading = new wxBoxSizer(wxHORIZONTAL);
+    heading->Add(new wxStaticText(favorites_panel, wxID_ANY, L"Favorites"), 0,
+                 wxALIGN_CENTER_VERTICAL | wxLEFT, 4);
+    heading->AddStretchSpacer();
+    auto* more = new wxButton(favorites_panel, wxID_ANY, L"⋯", wxDefaultPosition,
+                              wxSize(28, 22));
+    more->SetToolTip(L"Clear, export or import the favorites list");
+    heading->Add(more, 0, wxRIGHT, 4);
+    fav_sizer->Add(heading, 0, wxEXPAND | wxTOP, 4);
+
     favorites_list_ = new wxListBox(favorites_panel, wxID_ANY);
     fav_sizer->Add(favorites_list_, 1, wxEXPAND | wxALL, 4);
     favorites_panel->SetSizer(fav_sizer);
@@ -107,6 +124,7 @@ void PdfListPane::build_ui()
 
     tree_->Bind(wxEVT_TREE_SEL_CHANGED, &PdfListPane::on_selection_changed, this);
     filter_box_->Bind(wxEVT_TEXT, &PdfListPane::on_filter_changed, this);
+    more->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { show_favorites_menu(); });
     tree_->Bind(wxEVT_TREE_ITEM_MENU, &PdfListPane::on_item_menu, this);
     favorites_list_->Bind(wxEVT_CONTEXT_MENU, &PdfListPane::on_favorite_menu, this);
 
@@ -581,6 +599,148 @@ void PdfListPane::on_favorite_menu(wxContextMenuEvent&)
     }, kRemove);
 
     PopupMenu(&menu);
+}
+
+void PdfListPane::show_favorites_menu()
+{
+    wxMenu menu;
+    const int kClear = wxWindow::NewControlId();
+    const int kExport = wxWindow::NewControlId();
+    const int kImport = wxWindow::NewControlId();
+
+    menu.Append(kClear, L"Clear favorites");
+    menu.Append(kExport, L"Export favorites…");
+    menu.Append(kImport, L"Import favorites…");
+    // Nothing to clear or export when the list is empty.
+    menu.Enable(kClear, !favorites_.empty());
+    menu.Enable(kExport, !favorites_.empty());
+
+    menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { clear_favorites(); }, kClear);
+    menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { export_favorites(); }, kExport);
+    menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) { import_favorites(); }, kImport);
+
+    PopupMenu(&menu);
+}
+
+void PdfListPane::clear_favorites()
+{
+    if (favorites_.empty()) {
+        return;
+    }
+    // Worth confirming: the list is hand-curated and there is no undo.
+    if (wxMessageBox(wxString::Format("Remove all %zu favorites?",
+                                      favorites_.size()),
+                     L"Clear favorites", wxYES_NO | wxICON_QUESTION,
+                     this) != wxYES) {
+        return;
+    }
+    favorites_.clear();
+    rebuild_favorites();
+    if (on_favorites_changed_) {
+        on_favorites_changed_();
+    }
+}
+
+void PdfListPane::export_favorites()
+{
+    if (favorites_.empty()) {
+        return;
+    }
+    wxFileDialog dialog(this, L"Export favorites", wxEmptyString,
+                        "pdfsherpa-favorites.json",
+                        "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                        wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    if (dialog.ShowModal() != wxID_OK) {
+        return;
+    }
+
+    const fs::path path = path_from_utf8(dialog.GetPath().utf8_string());
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream) {
+        wxMessageBox(wxString::FromUTF8("Could not write " +
+                                        path_to_utf8(path.filename())),
+                     L"Export favorites", wxOK | wxICON_ERROR, this);
+        return;
+    }
+    stream << favorites_to_json(favorites_);
+    stream.flush();
+    if (!stream.good()) {
+        wxMessageBox(wxString::FromUTF8("Could not write " +
+                                        path_to_utf8(path.filename())),
+                     L"Export favorites", wxOK | wxICON_ERROR, this);
+        return;
+    }
+    wxMessageBox(wxString::Format("Exported %zu favorites.", favorites_.size()),
+                 L"Export favorites", wxOK | wxICON_INFORMATION, this);
+}
+
+void PdfListPane::import_favorites()
+{
+    wxFileDialog dialog(this, L"Import favorites", wxEmptyString, wxEmptyString,
+                        "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() != wxID_OK) {
+        return;
+    }
+
+    const fs::path path = path_from_utf8(dialog.GetPath().utf8_string());
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) {
+        wxMessageBox(wxString::FromUTF8("Could not read " +
+                                        path_to_utf8(path.filename())),
+                     L"Import favorites", wxOK | wxICON_ERROR, this);
+        return;
+    }
+    std::ostringstream buffer;
+    buffer << stream.rdbuf();
+
+    const FavoritesFile parsed = parse_favorites_json(buffer.str());
+    if (!parsed.ok) {
+        wxMessageBox(wxString::FromUTF8("Could not read " +
+                                        path_to_utf8(path.filename()) + ":\n\n" +
+                                        parsed.error),
+                     L"Import favorites", wxOK | wxICON_ERROR, this);
+        return;
+    }
+    // "Not a favorites file" and "a favorites file listing nothing" are
+    // different mistakes, so they get different messages.
+    if (!parsed.had_list) {
+        wxMessageBox(wxString::FromUTF8(path_to_utf8(path.filename()) +
+                                        " does not contain a favorites list."),
+                     L"Import favorites", wxOK | wxICON_WARNING, this);
+        return;
+    }
+    if (parsed.favorites.empty()) {
+        wxMessageBox(L"That file lists no favorites.", L"Import favorites",
+                     wxOK | wxICON_INFORMATION, this);
+        return;
+    }
+
+    bool replace = false;
+    if (!favorites_.empty()) {
+        wxMessageDialog choice(
+            this,
+            wxString::Format("Import %zu favorites.\n\n"
+                             "Yes    -  merge them with your current list\n"
+                             "No     -  replace your current list\n"
+                             "Cancel -  do nothing",
+                             parsed.favorites.size()),
+            L"Import favorites", wxYES_NO | wxCANCEL | wxICON_QUESTION);
+        const int answer = choice.ShowModal();
+        if (answer == wxID_CANCEL) {
+            return;
+        }
+        replace = (answer == wxID_NO);
+    }
+
+    favorites_ = replace
+                     ? merge_favorites({}, parsed.favorites, kMaxFavorites)
+                     : merge_favorites(favorites_, parsed.favorites, kMaxFavorites);
+
+    rebuild_favorites();
+    if (on_favorites_changed_) {
+        on_favorites_changed_();
+    }
 }
 
 std::optional<int> PdfListPane::sash_position() const

@@ -7,6 +7,8 @@
 add_library(sherpa_core STATIC
     Config.cpp
     Config.h
+    FavoritesFile.cpp
+    FavoritesFile.h
     Metadata.cpp
     Metadata.h
     PathUtf8.cpp
