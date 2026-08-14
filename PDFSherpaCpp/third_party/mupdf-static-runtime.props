@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Force MuPDF's Visual Studio projects onto the static CRT.
+
+  MuPDF's own vcxproj files hardcode <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+  (/MD).  PDF Sherpa ships a single static exe that needs no VC++ redistributable,
+  which means every object in the link (ours and MuPDF's alike) must be /MT.
+  Mixing /MT and /MD in one image is not a warning, it is two C runtimes with two
+  heaps, and it fails at the first free() of a pointer allocated on the other side.
+
+  This file is force-imported on the MSBuild command line rather than edited into
+  MuPDF's projects:
+
+    msbuild platform/win32/mupdf.sln /p:ForceImportBeforeCppTargets=<abs path here>
+
+  ForceImportBeforeCppTargets is imported after the project body but before
+  Microsoft.Cpp.targets, so this ItemDefinitionGroup wins over the hardcoded value
+  while leaving the pinned MuPDF tree pristine.  Re-extracting the tarball then
+  costs nothing, and no local patch can silently go missing.
+
+  Note for editors: XML comments may not contain a double hyphen. An earlier
+  revision used one as a dash and MSBuild refused the import with MSB4024.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <!--
+      Features PDF Sherpa provably never reaches, switched off to keep the
+      shipped exe small.  A stock MuPDF build links tesseract + leptonica (OCR)
+      and zxing (barcodes) and produced a 40 MB executable that did nothing but
+      call fz_open_document, which is larger than the whole 35 MB Python app.
+
+      Justification for each, against app.py:
+        BARCODE / OCR    never called; the app has no OCR or barcode feature.
+        XPS SVG CBZ IMG  the app opens *.pdf only (refresh_pdf_list globs for
+        HTML FB2 MOBI    ".pdf", and load_pdf calls fitz.open on that path), so
+        EPUB OFFICE TXT  every other document handler is dead weight.
+        JS               PDF JavaScript; the viewer never runs form scripts.
+        OCR_OUTPUT       an output format the app cannot select.
+        DOCX/ODT_OUTPUT  likewise.
+
+      Deliberately left ON:
+        ICC              colour management; turning it off changes how pages
+                         render, which the pixel-diff parity test would catch
+                         as a regression against the Python app.
+        JPX              JPEG 2000; scanned technical documents do use it and
+                         losing it means blank images, not a smaller feature.
+        BROTLI           needed to decompress some embedded font streams.
+    -->
+    <PdfSherpaMuPdfDefines>
+      FZ_ENABLE_BARCODE=0;FZ_ENABLE_OCR_OUTPUT=0;FZ_ENABLE_DOCX_OUTPUT=0;FZ_ENABLE_ODT_OUTPUT=0;FZ_ENABLE_JS=0;FZ_ENABLE_XPS=0;FZ_ENABLE_SVG=0;FZ_ENABLE_CBZ=0;FZ_ENABLE_IMG=0;FZ_ENABLE_HTML=0;FZ_ENABLE_FB2=0;FZ_ENABLE_MOBI=0;FZ_ENABLE_EPUB=0;FZ_ENABLE_OFFICE=0;FZ_ENABLE_TXT=0;TOFU_CJK;TOFU_SIL
+    </PdfSherpaMuPdfDefines>
+    <!--
+      Fallback fonts, which MuPDF compiles into libresources as C arrays.
+      These are used ONLY when a document does not embed the font it asks for;
+      an embedded font always wins, and well-formed technical PDFs embed.
+
+        TOFU_CJK   drops DroidSansFallback, the single largest resource, and
+                   implicitly drops CJK Extension A and the language-specific
+                   variants.  Cost: a PDF using CJK text *without* embedding
+                   its font shows blank boxes.  Accepted deliberately for a
+                   Latin-script technical-document reader.
+        TOFU_SIL   drops Charis SIL, which exists to render epub/html.  Those
+                   handlers are already off above, so this one is free.
+
+      Base14 stays in: without it even Helvetica/Times substitution fails, and
+      non-embedding PDFs that rely on the standard 14 are common.
+    -->
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
+      <!--
+        These defines are visible in MuPDF's PUBLIC headers (fitz/config.h
+        gates declarations on them), so PDFSherpaCpp must compile with exactly
+        the same list.  CMake keeps the single copy in
+        PDFSherpaCpp/cmake/MuPdf.cmake and passes it to both sides; if the two
+        ever drift, the app and the library disagree about which functions
+        exist and the failure surfaces as a link error at best.
+      -->
+      <PreprocessorDefinitions>$(PdfSherpaMuPdfDefines);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>
