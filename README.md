@@ -204,7 +204,7 @@ Everything the app remembers lives in one JSON file — `%APPDATA%\PDFGuide\conf
 | `geometry` | Window size and position |
 | `last_pdf` | PDF re-opened on the next launch |
 | `last_pages` | Last-viewed page per PDF (200 most recent) |
-| `favorites` | Pinned PDFs above the search box (10 max, stored relative to the folder root) |
+| `favorites` | Pinned PDFs above the search box (10 max, stored relative to whichever top-level folder contains them, so they survive that folder being moved or renamed) |
 | `expanded_folders` | Subfolders left open in the PDF list |
 | `fit_pref` | Viewer fit preference: `"width"` or `"page"` |
 | `bm_sash` | Bookmarks/Topics divider position |
