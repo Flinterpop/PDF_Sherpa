@@ -11,7 +11,8 @@ PDF Sherpa lets you browse a folder of PDFs **by topic** and read them in a buil
 ## The three panes
 
 - **PDFs** (left) — every PDF found under your top-level folders, each shown as its own heading with subfolders nested beneath it. Click one to open it. The search box filters the list as you type.
-  Right-click a PDF for **Open PDF** (in your default viewer), **Reveal in Explorer**, or **Add to favorites**; right-click a folder to open it in Explorer.
+  Right-click a PDF for **Open PDF** (in your default viewer), **Reveal in Explorer**, or **Add to favorites**; right-click a folder for **Show as flat list** or to open it in Explorer.
+  **Show as flat list** collapses a folder's structure: it then lists every PDF beneath it, at any depth, with no subfolder rows — handy when you know the filename but not which subfolder it is in. It works on any folder, top-level or not, and each folder remembers its own setting, so you can flatten one and leave its neighbour as a tree. A flattened folder is marked `(flat)`; untick to get the tree back.
   A **Favorites** list sits above the search box: up to 10 pinned PDFs (newest first) that you can open in one click. Each row shows the PDF's path
   relative to the top-level folder it sits under, and favorites are stored that way — so they keep working if you move or rename that folder
   (a PDF outside every top-level folder is kept as an absolute path). Right-click a

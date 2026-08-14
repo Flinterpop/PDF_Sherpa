@@ -133,6 +133,7 @@ Page numbers are **1-based** (page 1 = the first page).
 ## Notes
 
 - PDFs are grouped by subfolder under each top-level folder, nested to any depth. Subfolders **start collapsed**, and the app **remembers which folders you left open/closed** for next time, per top-level folder. (While a search filter is active, folders open automatically to reveal matches.)
+- Right-click any folder and tick **Show as flat list** to collapse its structure: it then lists every PDF beneath it at any depth, with no subfolder rows, and is marked `(flat)`. Works on any folder, not just top-level ones, and each remembers its own setting.
 - **Search boxes** in every pane (`✕` clears): the PDF list filters by
   filename, the Topics pane filters the topic list, and the viewer's box
   searches the **text of the open PDF** — matches highlight in yellow with a
