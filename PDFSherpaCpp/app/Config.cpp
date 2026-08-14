@@ -212,6 +212,47 @@ void Config::load()
     }
 
     folder_ = string_at(document, "folder");
+
+    roots_.clear();
+    if (document.contains("roots") && document["roots"].is_array()) {
+        for (const json& entry : document["roots"]) {
+            if (roots_.size() >= kMaxRoots) {
+                break;
+            }
+            if (!entry.is_object() || !entry.contains("path") ||
+                !entry["path"].is_string()) {
+                continue;
+            }
+            Root root;
+            root.path = entry["path"].get<std::string>();
+            if (root.path.empty()) {
+                continue;
+            }
+            root.name = (entry.contains("name") && entry["name"].is_string())
+                            ? entry["name"].get<std::string>()
+                            : std::string();
+            if (root.name.empty()) {
+                // Fall back to the folder's own name, which is what the user
+                // would have called it anyway.
+                root.name = path_to_utf8(path_from_utf8(root.path).filename());
+                if (root.name.empty()) {
+                    root.name = root.path;
+                }
+            }
+            roots_.push_back(std::move(root));
+        }
+    }
+    // A profile written before multi-root support carries only "folder".
+    // Promote it rather than starting the user with nothing.
+    if (roots_.empty() && !folder_.empty()) {
+        Root root;
+        root.path = folder_;
+        root.name = path_to_utf8(path_from_utf8(folder_).filename());
+        if (root.name.empty()) {
+            root.name = folder_;
+        }
+        roots_.push_back(std::move(root));
+    }
     last_pdf_ = string_at(document, "last_pdf");
     geometry_ = string_at(document, "geometry");
     skip_version_ = string_at(document, "skip_version");
@@ -266,6 +307,28 @@ std::optional<int> Config::last_page(const fs::path& pdf_path) const
         return std::nullopt;
     }
     return it->second;
+}
+
+bool Config::save_roots(std::vector<Root> roots)
+{
+    if (roots.size() > kMaxRoots) {
+        roots.resize(kMaxRoots);
+    }
+    roots_ = std::move(roots);
+
+    json array = json::array();
+    for (const Root& root : roots_) {
+        array.push_back(json{{"name", root.name}, {"path", root.path}});
+    }
+
+    json patch = json{{"roots", array}};
+    // Keep "folder" pointing at the first root.  The deprecated Python app
+    // knows nothing about "roots" and opens "folder"; leaving it stale would
+    // send it to a folder the user may have removed.
+    folder_ = roots_.empty() ? std::string() : roots_.front().path;
+    patch["folder"] = folder_;
+
+    return merge_write(patch);
 }
 
 bool Config::save_folder(const std::string& folder)

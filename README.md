@@ -10,7 +10,7 @@
 
 A small desktop app that lets you browse PDFs by topic.
 
-- **Left pane** — lists every PDF in a folder (the last folder you chose, or a `./pdfs` subfolder by default).
+- **Left pane** — lists every PDF under your top-level folders (up to five, managed with **Folders…**; a `./pdfs` subfolder by default). Each folder is its own heading, with subfolders nested beneath it.
 - **Middle pane** — when you select a PDF, shows the topics and page numbers from its companion metadata file (same base name, `.toc` or `.json`), with your own bookmarks in a resizable list above them.
 - **Right pane** — an embedded viewer. Click a topic and the PDF jumps to that page.
 - **Search everywhere** — filter the PDF list by name, filter the topic list, and full-text search inside the open PDF with highlighted matches.
@@ -36,7 +36,7 @@ PDFSherpa.exe            # last chosen folder (or the ./pdfs subfolder)
 PDFSherpa.exe C:\docs    # or point it at any folder
 ```
 
-You can also switch folders at runtime with the **Choose folder…** button — the chosen folder is remembered and reopened on the next launch (a command-line folder overrides it).
+Use the **Folders…** button to manage up to five top-level folders. Each appears as its own heading in the PDF list with its subfolders nested beneath it, and the set is remembered and reopened on the next launch. A folder given on the command line is used for that session only and does not disturb the saved list.
 
 ## Installing (Windows)
 
@@ -50,7 +50,7 @@ Grab either flavor from the
   anywhere (a folder, a USB stick) and run it. Settings still live in
   `%APPDATA%\PDFGuide\config.json`.
 
-Point the app at your own PDF folder with **Choose folder…** after installing.
+Point the app at your own PDF folders with **Folders…** after installing.
 
 The app **checks for updates at launch** (quietly, in the background) and
 offers to download and apply a newer release in place — the installed copy
@@ -132,10 +132,7 @@ Page numbers are **1-based** (page 1 = the first page).
 
 ## Notes
 
-- PDFs are grouped by subfolder under the top-level folder. Subfolders **start
-  collapsed**, and the app **remembers which folders you left open/closed** for
-  next time. (While a search filter is active, folders open automatically to
-  reveal matches.)
+- PDFs are grouped by subfolder under each top-level folder, nested to any depth. Subfolders **start collapsed**, and the app **remembers which folders you left open/closed** for next time, per top-level folder. (While a search filter is active, folders open automatically to reveal matches.)
 - **Search boxes** in every pane (`✕` clears): the PDF list filters by
   filename, the Topics pane filters the topic list, and the viewer's box
   searches the **text of the open PDF** — matches highlight in yellow with a
@@ -202,7 +199,8 @@ Everything the app remembers lives in one JSON file — `%APPDATA%\PDFGuide\conf
 
 | Key | Meaning |
 |-----|---------|
-| `folder` | Last folder chosen with **Choose folder…** |
+| `roots` | Top-level folders shown in the PDF list, as `{"name", "path"}` entries, in display order |
+| `folder` | The first entry of `roots`, kept in step so older versions still open something |
 | `geometry` | Window size and position |
 | `last_pdf` | PDF re-opened on the next launch |
 | `last_pages` | Last-viewed page per PDF (200 most recent) |

@@ -65,18 +65,19 @@ bool PdfSherpaApp::OnInit()
     pdfsherpa::Config config;
     config.load();
 
-    fs::path folder;
+    fs::path override_root;
     if (!folder_argument_.empty()) {
-        folder = pdfsherpa::path_from_utf8(folder_argument_.utf8_string());
-    } else {
-        const fs::path saved = pdfsherpa::path_from_utf8(config.folder());
-        std::error_code ec;
-        folder = (!config.folder().empty() && fs::is_directory(saved, ec))
-                     ? saved
-                     : default_folder();
+        override_root = pdfsherpa::path_from_utf8(folder_argument_.utf8_string());
+    } else if (config.roots().empty()) {
+        // Nothing configured yet: seed the ./pdfs folder beside the exe, so a
+        // fresh install opens on something rather than an empty tree.
+        pdfsherpa::Root root;
+        root.path = pdfsherpa::path_to_utf8(default_folder());
+        root.name = pdfsherpa::path_to_utf8(default_folder().filename());
+        config.save_roots({root});
     }
 
-    auto* frame = new pdfsherpa::MainFrame(folder, std::move(config));
+    auto* frame = new pdfsherpa::MainFrame(override_root, std::move(config));
     frame->Show(true);
     return true;
 }

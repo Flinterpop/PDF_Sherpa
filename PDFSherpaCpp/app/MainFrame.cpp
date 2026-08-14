@@ -9,6 +9,7 @@
 #include <wx/tglbtn.h>
 
 #include "DropTarget.h"
+#include "FoldersDialog.h"
 #include "HelpDialog.h"
 #include "Metadata.h"
 #include "PathUtf8.h"
@@ -40,20 +41,34 @@ constexpr int kUpdateDelayMs = 2000;
 
 }  // namespace
 
-MainFrame::MainFrame(const fs::path& folder, Config config)
+MainFrame::MainFrame(const fs::path& override_root, Config config)
     : wxFrame(nullptr, wxID_ANY,
               wxString::Format("%s - V%s", kAppName, kAppVersion),
               wxDefaultPosition, wxSize(kDefaultWidth, kDefaultHeight)),
       config_(std::move(config)),
-      folder_(folder)
+      roots_overridden_(!override_root.empty())
 {
     build_ui();
     bind_shortcuts();
     restore_geometry();
 
+    std::vector<Root> roots = config_.roots();
+    if (roots_overridden_) {
+        Root root;
+        root.path = path_to_utf8(override_root);
+        root.name = path_to_utf8(override_root.filename());
+        if (root.name.empty()) {
+            root.name = root.path;
+        }
+        roots = {root};
+    }
+
     pdf_list_->set_favorites(config_.favorites());
-    pdf_list_->set_folder(folder_);
+    pdf_list_->set_roots(std::move(roots));
     pdf_list_->set_expanded_folders(config_.expanded_folders());
+    // After set_roots, not in build_ui(): the status bar is created before the
+    // roots are known, so the first call there always reports none.
+    update_status();
 
     if (config_.bm_sash().has_value()) {
         topics_->set_sash_position(*config_.bm_sash());
@@ -90,7 +105,8 @@ void MainFrame::build_ui()
 
     // -- toolbar --
     auto* bar = new wxBoxSizer(wxHORIZONTAL);
-    auto* choose = new wxButton(root, wxID_ANY, L"Choose folder…");
+    auto* choose = new wxButton(root, wxID_ANY, L"Folders…");
+    choose->SetToolTip(L"Add, rename, reorder or remove the top-level folders");
     auto* refresh = new wxButton(root, wxID_ANY, L"Refresh");
     show_pdfs_button_ = new wxToggleButton(root, wxID_ANY, L"PDFs");
     show_topics_button_ = new wxToggleButton(root, wxID_ANY, L"Topics");
@@ -142,7 +158,7 @@ void MainFrame::build_ui()
     SetSizer(frame_sizer);
 
     CreateStatusBar();
-    SetStatusText(wxString::FromUTF8(path_to_utf8(folder_)));
+    update_status();
 
     // -- wiring --
     pdf_list_->set_selection_handler(
@@ -178,7 +194,7 @@ void MainFrame::build_ui()
         on_files_dropped(paths);
     }));
 
-    choose->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { choose_folder(); });
+    choose->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { manage_folders(); });
     refresh->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { refresh_folder(); });
     bookmark->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         if (viewer_->has_document()) {
@@ -258,18 +274,35 @@ void MainFrame::open_pdf(const fs::path& pdf_path)
     SetStatusText(wxString::FromUTF8(path_to_utf8(pdf_path)));
 }
 
-void MainFrame::choose_folder()
+void MainFrame::manage_folders()
 {
-    wxDirDialog dialog(this, L"Choose a folder of PDFs",
-                       wxString::FromUTF8(path_to_utf8(folder_)),
-                       wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+    FoldersDialog dialog(this, pdf_list_->roots());
     if (dialog.ShowModal() != wxID_OK) {
         return;
     }
-    folder_ = path_from_utf8(dialog.GetPath().utf8_string());
-    config_.save_folder(path_to_utf8(folder_));
-    pdf_list_->set_folder(folder_);
-    SetStatusText(wxString::FromUTF8(path_to_utf8(folder_)));
+
+    std::vector<Root> roots = dialog.roots();
+    pdf_list_->set_roots(roots);
+    pdf_list_->set_expanded_folders(config_.expanded_folders());
+
+    // A command-line folder is a session override; persisting a change made
+    // on top of it would quietly replace the user's saved folders.
+    if (!roots_overridden_) {
+        config_.save_roots(std::move(roots));
+    }
+    update_status();
+}
+
+void MainFrame::update_status()
+{
+    const std::vector<Root>& roots = pdf_list_->roots();
+    if (roots.empty()) {
+        SetStatusText(L"No folders configured — use Folders… to add one");
+    } else if (roots.size() == 1) {
+        SetStatusText(wxString::FromUTF8(roots.front().path));
+    } else {
+        SetStatusText(wxString::Format("%zu folders", roots.size()));
+    }
 }
 
 void MainFrame::refresh_folder()
@@ -314,7 +347,15 @@ void MainFrame::on_files_dropped(const std::vector<fs::path>& paths)
         return;
     }
 
-    const fs::path inbox = folder_ / "inbox";
+    // Dropped PDFs go to the inbox of the root holding the current
+    // selection, falling back to the first root -- see PdfListPane::drop_root.
+    const fs::path drop_base = pdf_list_->drop_root();
+    if (drop_base.empty()) {
+        wxMessageBox(L"Add a folder first, with the Folders… button.",
+                     L"Drop PDFs", wxOK | wxICON_INFORMATION, this);
+        return;
+    }
+    const fs::path inbox = drop_base / "inbox";
     fs::create_directories(inbox, ec);
     if (ec) {
         wxMessageBox(wxString::FromUTF8("Could not create " +

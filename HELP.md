@@ -59,11 +59,13 @@ can spot them at a glance. These are separate from a PDF's built-in bookmarks, w
 Bookmarks are saved next to the PDF — `manual.pdf` gets `manual.bookmarks.json` — so they travel with the folder and are easy to edit
 by hand. Deleting the last bookmark removes the file, and saving highlights as an `(ann)` copy carries the bookmarks along.
 
-## Choosing a folder
+## Choosing folders
 
-Use **Choose folder…** to point Sherpa at any folder of PDFs. Your choice is remembered — the next launch opens the same folder — along with which
-subfolders you left open, your window size, and the last PDF you were reading, returning you to the page you left off on. Reading positions are kept
-for the 200 PDFs you opened most recently. (Starting the app with a folder on the command line overrides the remembered folder.)
+Use **Folders…** to manage the top-level folders Sherpa shows — you can have up to five, and each appears as its own heading at the top of the PDF list with its subfolders nested beneath it. In the dialog you can **Add** a folder, **Rename** it (the name is just a label, so a long path can read as *ICDs* or *Manuals*), reorder it with **Move up** / **Move down**, or **Remove** it. Removing a folder only stops Sherpa listing it; nothing on disk is touched.
+
+The order matters in one place: a PDF dropped on the window is filed into the `inbox` of whichever folder the currently selected PDF belongs to, falling back to the first folder in the list when nothing is selected.
+
+Your folders are remembered — the next launch opens the same set — along with which subfolders you left open, your window size, and the last PDF you were reading, returning you to the page you left off on. Reading positions are kept for the 200 PDFs you opened most recently. (Starting the app with a folder on the command line uses just that folder for the session, and does not disturb your saved list.)
 
 ## Searching
 

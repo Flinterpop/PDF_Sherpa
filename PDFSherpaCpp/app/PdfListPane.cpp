@@ -124,9 +124,9 @@ void PdfListPane::build_ui()
     });
 }
 
-void PdfListPane::set_folder(const fs::path& folder)
+void PdfListPane::set_roots(std::vector<Root> roots)
 {
-    folder_ = folder;
+    roots_ = std::move(roots);
     rescan();
 }
 
@@ -134,48 +134,81 @@ void PdfListPane::rescan()
 {
     entries_.clear();
 
-    std::error_code ec;
-    if (folder_.empty() || !fs::is_directory(folder_, ec)) {
-        rebuild_tree();
-        return;
-    }
-
-    // operator++ on a recursive_directory_iterator THROWS on an unreadable
-    // entry even when the iterator was built with the error_code overload, so
-    // the walk is explicit.  A range-for here dies on the first locked folder.
-    fs::recursive_directory_iterator it(
-        folder_, fs::directory_options::skip_permission_denied, ec);
-    const fs::recursive_directory_iterator end;
-
-    // A bound the walk cannot exceed, so a pathological tree (or a symlink
-    // loop the iterator does not catch) cannot hang the UI indefinitely.
-    constexpr std::size_t kMaxEntries = 200000;
-    std::size_t visited = 0;
-
-    while (!ec && it != end && visited < kMaxEntries) {
-        ++visited;
-        const fs::directory_entry entry = *it;
-        if (entry.is_regular_file(ec) && is_pdf(entry.path())) {
-            PdfEntry pdf;
-            pdf.path = entry.path();
-            pdf.relative_dir = relative_dir(folder_, entry.path());
-            pdf.has_metadata = find_metadata_path(entry.path()).has_value();
-            pdf.has_bookmarks = !load_bookmarks(entry.path()).empty();
-            entries_.push_back(std::move(pdf));
+    for (std::size_t index = 0; index < roots_.size(); ++index) {
+        const fs::path root = path_from_utf8(roots_[index].path);
+        std::error_code ec;
+        if (roots_[index].path.empty() || !fs::is_directory(root, ec)) {
+            continue;  // a root on an unplugged drive is skipped, not fatal
         }
-        it.increment(ec);
+
+        // operator++ on a recursive_directory_iterator THROWS on an unreadable
+        // entry even when the iterator was built with the error_code overload,
+        // so the walk is explicit.  A range-for dies on the first locked
+        // folder.
+        fs::recursive_directory_iterator it(
+            root, fs::directory_options::skip_permission_denied, ec);
+        const fs::recursive_directory_iterator end;
+
+        // A bound the walk cannot exceed, so a pathological tree (or a symlink
+        // loop the iterator does not catch) cannot hang the UI indefinitely.
+        constexpr std::size_t kMaxEntriesPerRoot = 200000;
+        std::size_t visited = 0;
+
+        while (!ec && it != end && visited < kMaxEntriesPerRoot) {
+            ++visited;
+            const fs::directory_entry entry = *it;
+            if (entry.is_regular_file(ec) && is_pdf(entry.path())) {
+                PdfEntry pdf;
+                pdf.path = entry.path();
+                pdf.root_index = index;
+                pdf.relative_dir = relative_dir(root, entry.path());
+                pdf.has_metadata = find_metadata_path(entry.path()).has_value();
+                pdf.has_bookmarks = !load_bookmarks(entry.path()).empty();
+                entries_.push_back(std::move(pdf));
+            }
+            it.increment(ec);
+        }
+        ec.clear();
     }
 
-    std::sort(entries_.begin(), entries_.end(),
-              [](const PdfEntry& a, const PdfEntry& b) {
-                  if (a.relative_dir != b.relative_dir) {
-                      return a.relative_dir < b.relative_dir;
-                  }
-                  return a.path.filename() < b.path.filename();
-              });
+    // Roots keep their configured order; within a root, folder then filename.
+    std::stable_sort(entries_.begin(), entries_.end(),
+                     [](const PdfEntry& a, const PdfEntry& b) {
+                         if (a.root_index != b.root_index) {
+                             return a.root_index < b.root_index;
+                         }
+                         if (a.relative_dir != b.relative_dir) {
+                             return a.relative_dir < b.relative_dir;
+                         }
+                         return a.path.filename() < b.path.filename();
+                     });
 
     rebuild_tree();
     rebuild_favorites();
+}
+
+fs::path PdfListPane::drop_root() const
+{
+    if (roots_.empty()) {
+        return {};
+    }
+    // The root holding the current selection, so a drop lands where the user
+    // is actually working rather than in whichever root happens to be first.
+    const wxTreeItemId selected = (tree_ != nullptr) ? tree_->GetSelection()
+                                                     : wxTreeItemId();
+    if (selected.IsOk()) {
+        const auto found = pdf_by_item_.find(selected);
+        if (found != pdf_by_item_.end()) {
+            const std::string key = page_key(found->second);
+            for (const PdfEntry& entry : entries_) {
+                if (page_key(entry.path) == key &&
+                    entry.root_index < roots_.size()) {
+                    return path_from_utf8(roots_[entry.root_index].path);
+                }
+            }
+        }
+    }
+    return path_from_utf8(roots_.front().path);
 }
 
 void PdfListPane::rebuild_tree()
@@ -185,10 +218,27 @@ void PdfListPane::rebuild_tree()
     tree_->DeleteAllItems();
     pdf_by_item_.clear();
     dir_by_item_.clear();
+    folder_path_by_item_.clear();
 
     const wxTreeItemId root = tree_->AddRoot("root");
     std::map<std::string, wxTreeItemId> folder_items;
     const std::string needle = to_lower(filter_);
+
+    // One top-level node per configured root, created up front so the roots
+    // appear in their configured order even if a later one has no matches.
+    // Folder keys are qualified with the root name ("ICDs/spec/annexes") so
+    // two roots that share a subfolder name expand independently.
+    std::vector<wxTreeItemId> root_items;
+    root_items.reserve(roots_.size());
+    for (const Root& configured : roots_) {
+        const wxTreeItemId item =
+            tree_->AppendItem(root, wxString::FromUTF8(configured.name));
+        tree_->SetItemBold(item, true);
+        folder_items.emplace(configured.name, item);
+        dir_by_item_.emplace(item, configured.name);
+        folder_path_by_item_.emplace(item, path_from_utf8(configured.path));
+        root_items.push_back(item);
+    }
 
     // Return the tree item for a root-relative folder path, creating every
     // missing ancestor along the way so the tree is genuinely nested.
@@ -198,17 +248,25 @@ void PdfListPane::rebuild_tree()
     // list of slash-separated names wearing a tree's clothes.  Each path
     // component gets its own node, and each node is reused by every later
     // entry beneath it.
-    const auto ensure_folder = [&](const std::string& rel) -> wxTreeItemId {
-        if (rel.empty()) {
+    const auto ensure_folder = [&](std::size_t root_index,
+                                   const std::string& rel) -> wxTreeItemId {
+        if (root_index >= root_items.size()) {
             return root;
         }
-        const auto cached = folder_items.find(rel);
+        const wxTreeItemId root_item = root_items[root_index];
+        const std::string& root_name = roots_[root_index].name;
+        if (rel.empty()) {
+            return root_item;
+        }
+
+        const std::string qualified = root_name + "/" + rel;
+        const auto cached = folder_items.find(qualified);
         if (cached != folder_items.end()) {
             return cached->second;
         }
 
-        wxTreeItemId parent = root;
-        std::string prefix;
+        wxTreeItemId parent = root_item;
+        std::string prefix = root_name;
         std::size_t start = 0;
         // Bounded by the path length; relative_dir is always '/'-separated.
         while (start <= rel.size()) {
@@ -217,7 +275,7 @@ void PdfListPane::rebuild_tree()
                 start, (slash == std::string::npos) ? std::string::npos
                                                     : slash - start);
             if (!component.empty()) {
-                prefix = prefix.empty() ? component : prefix + "/" + component;
+                prefix += "/" + component;
                 const auto found = folder_items.find(prefix);
                 if (found != folder_items.end()) {
                     parent = found->second;
@@ -227,6 +285,11 @@ void PdfListPane::rebuild_tree()
                     tree_->SetItemBold(item, true);
                     folder_items.emplace(prefix, item);
                     dir_by_item_.emplace(item, prefix);
+                    // The on-disk folder, for "Open folder in Explorer".
+                    folder_path_by_item_.emplace(
+                        item, path_from_utf8(roots_[root_index].path) /
+                                  path_from_utf8(prefix.substr(
+                                      roots_[root_index].name.size() + 1)));
                     parent = item;
                 }
             }
@@ -244,7 +307,8 @@ void PdfListPane::rebuild_tree()
             continue;  // folders with no surviving child simply never appear
         }
 
-        const wxTreeItemId parent = ensure_folder(entry.relative_dir);
+        const wxTreeItemId parent =
+            ensure_folder(entry.root_index, entry.relative_dir);
 
         wxString label = wxString::FromUTF8(name);
         if (!entry.has_metadata) {
@@ -346,16 +410,20 @@ void PdfListPane::set_expanded_folders(std::vector<std::string> folders)
 
 std::string PdfListPane::favorite_store_form(const fs::path& pdf_path) const
 {
-    std::error_code ec;
-    const fs::path rel = fs::relative(pdf_path, folder_, ec);
-    // A path that climbs out of the root is not "under" it; keep those
-    // absolute so they still resolve after the root changes.
-    if (ec || rel.empty() || path_to_utf8(rel).rfind("..", 0) == 0) {
-        return path_to_utf8(pdf_path);
+    for (const Root& root : roots_) {
+        const fs::path base = path_from_utf8(root.path);
+        std::error_code ec;
+        const fs::path rel = fs::relative(pdf_path, base, ec);
+        // A path that climbs out of a root is not "under" it.
+        if (ec || rel.empty() || path_to_utf8(rel).rfind("..", 0) == 0) {
+            continue;
+        }
+        std::string text = path_to_utf8(rel);
+        std::replace(text.begin(), text.end(), '\\', '/');
+        return text;
     }
-    std::string text = path_to_utf8(rel);
-    std::replace(text.begin(), text.end(), '\\', '/');
-    return text;
+    // Under no configured root: keep it absolute so it still opens.
+    return path_to_utf8(pdf_path);
 }
 
 fs::path PdfListPane::favorite_absolute(const std::string& stored) const
@@ -364,7 +432,23 @@ fs::path PdfListPane::favorite_absolute(const std::string& stored) const
     if (candidate.is_absolute()) {
         return candidate;
     }
-    return folder_ / candidate;
+    // Relative favorites are resolved against each root in configured order,
+    // taking the first that actually exists.  That keeps them working when a
+    // root is moved or renamed on disk, which is why they are stored relative
+    // in the first place.
+    std::error_code ec;
+    for (const Root& root : roots_) {
+        const fs::path resolved = path_from_utf8(root.path) / candidate;
+        if (fs::is_regular_file(resolved, ec)) {
+            return resolved;
+        }
+    }
+    // Nothing matched -- fall back to the first root so the caller still has
+    // a path to report rather than an empty one.
+    if (!roots_.empty()) {
+        return path_from_utf8(roots_.front().path) / candidate;
+    }
+    return candidate;
 }
 
 bool PdfListPane::is_favorite(const fs::path& pdf_path) const
@@ -455,9 +539,9 @@ void PdfListPane::on_item_menu(wxTreeEvent& event)
         return;
     }
 
-    const auto dir = dir_by_item_.find(item);
-    if (dir != dir_by_item_.end()) {
-        const fs::path path = folder_ / path_from_utf8(dir->second);
+    const auto dir = folder_path_by_item_.find(item);
+    if (dir != folder_path_by_item_.end()) {
+        const fs::path path = dir->second;
         menu.Append(kReveal, L"Open folder in Explorer");
         menu.Bind(wxEVT_MENU, [this, path](wxCommandEvent&) {
             ::ShellExecuteW(nullptr, nullptr, path.c_str(), nullptr, nullptr,

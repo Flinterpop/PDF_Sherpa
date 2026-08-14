@@ -44,6 +44,8 @@ add_executable(PDFSherpa WIN32
     main.cpp
     DropTarget.cpp
     DropTarget.h
+    FoldersDialog.cpp
+    FoldersDialog.h
     HelpDialog.cpp
     HelpDialog.h
     MainFrame.cpp

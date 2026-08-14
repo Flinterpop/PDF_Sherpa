@@ -34,6 +34,19 @@ namespace pdfsherpa {
 inline constexpr std::size_t kMaxRememberedPages = 200;
 inline constexpr std::size_t kMaxFavorites = 10;
 
+// Top-level folders the PDF list shows, capped at the same five MDBoss allows.
+// A cap at all exists because every root is rescanned on Refresh and walked on
+// startup; five is generous for the use case and keeps that bounded.
+inline constexpr std::size_t kMaxRoots = 5;
+
+// One top-level folder, as stored: {"name": ..., "path": ...}.  The name is
+// what the tree shows, so a root can be called "ICDs" rather than displaying
+// a long absolute path.
+struct Root {
+    std::string name;
+    std::string path;
+};
+
 // The stable per-PDF key for the last-page map: absolute, backslash-separated
 // and lowercased, matching os.path.normcase(os.path.abspath(p)).  Two spellings
 // of one file must land on one key or the reading position is lost whenever the
@@ -49,6 +62,15 @@ public:
     // Read from disk.  A missing or malformed file yields defaults rather than
     // an error: settings are a convenience and must never be load-bearing.
     void load();
+
+    // The configured top-level folders, in display order.
+    //
+    // Back-compat: a profile written before multi-root support has no "roots"
+    // key, only the single "folder".  load() promotes that to a one-element
+    // list, and save_roots() keeps "folder" pointing at the first root, so a
+    // profile stays readable by the deprecated Python app.
+    const std::vector<Root>& roots() const { return roots_; }
+    bool save_roots(std::vector<Root> roots);
 
     const std::string& folder() const { return folder_; }
     const std::string& last_pdf() const { return last_pdf_; }
@@ -92,6 +114,7 @@ public:
     bool save_last_page(const std::filesystem::path& pdf_path, int page_index);
 
 private:
+    std::vector<Root> roots_;
     std::string folder_;
     std::string last_pdf_;
     std::string fit_pref_ = "width";

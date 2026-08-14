@@ -22,13 +22,17 @@ class ViewerPane;
 
 class MainFrame : public wxFrame {
 public:
-    MainFrame(const std::filesystem::path& folder, Config config);
+    // `override_root` is a folder given on the command line.  When set it is
+    // the only root for this session and is NOT persisted, matching how the
+    // Python app lets a command-line folder override the saved one.
+    MainFrame(const std::filesystem::path& override_root, Config config);
 
 private:
     void build_ui();
     void bind_shortcuts();
     void open_pdf(const std::filesystem::path& pdf_path);
-    void choose_folder();
+    void manage_folders();
+    void update_status();
     void refresh_folder();
     // Copy dropped PDFs into <folder>/inbox and build any missing .toc files.
     void on_files_dropped(const std::vector<std::filesystem::path>& paths);
@@ -41,7 +45,9 @@ private:
     std::string current_geometry() const;
 
     Config config_;
-    std::filesystem::path folder_;
+    // True when a command-line folder is in force, which suppresses persisting
+    // root changes for the session.
+    bool roots_overridden_ = false;
     std::filesystem::path current_pdf_;
 
     wxSplitterWindow* outer_split_ = nullptr;

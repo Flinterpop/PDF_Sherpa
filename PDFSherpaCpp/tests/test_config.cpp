@@ -20,6 +20,7 @@
 
 namespace fs = std::filesystem;
 using pdfsherpa::Config;
+using pdfsherpa::Root;
 
 namespace {
 
@@ -310,6 +311,91 @@ TEST_CASE("the favorites divider round-trips", "[config]")
     reloaded.load();
     REQUIRE(reloaded.fav_sash().has_value());
     CHECK(*reloaded.fav_sash() == 175);
+}
+
+TEST_CASE("a folder-only profile is promoted to a single root", "[config][roots]")
+{
+    const ScopedAppData appdata;
+    // Exactly what a profile written before multi-root support looks like.
+    appdata.write_raw(R"({"folder": "C:\\ICD"})");
+
+    Config config;
+    config.load();
+    REQUIRE(config.roots().size() == 1);
+    CHECK(config.roots()[0].path == "C:\\ICD");
+    // Named after the folder itself, since the old format carried no name.
+    CHECK(config.roots()[0].name == "ICD");
+}
+
+TEST_CASE("roots round-trip and keep folder pointing at the first",
+          "[config][roots]")
+{
+    const ScopedAppData appdata;
+    Config config;
+    config.load();
+
+    REQUIRE(config.save_roots({Root{"ICDs", "C:\\ICD"},
+                               Root{"Manuals", "D:\\docs\\manuals"}}));
+
+    const nlohmann::json after = nlohmann::json::parse(appdata.read_raw());
+    REQUIRE(after["roots"].size() == 2);
+    CHECK(after["roots"][0]["name"] == "ICDs");
+    CHECK(after["roots"][1]["path"] == "D:\\docs\\manuals");
+    // The deprecated Python app knows only "folder"; leaving it stale would
+    // send it somewhere the user may have removed.
+    CHECK(after["folder"] == "C:\\ICD");
+
+    Config reloaded;
+    reloaded.load();
+    REQUIRE(reloaded.roots().size() == 2);
+    CHECK(reloaded.roots()[1].name == "Manuals");
+    CHECK(reloaded.folder() == "C:\\ICD");
+}
+
+TEST_CASE("roots are capped", "[config][roots]")
+{
+    const ScopedAppData appdata;
+    Config config;
+    config.load();
+
+    std::vector<Root> many;
+    for (std::size_t i = 0; i < pdfsherpa::kMaxRoots + 3; ++i) {
+        many.push_back(Root{"root" + std::to_string(i), "C:\\r" + std::to_string(i)});
+    }
+    REQUIRE(config.save_roots(many));
+    CHECK(config.roots().size() == pdfsherpa::kMaxRoots);
+
+    Config reloaded;
+    reloaded.load();
+    CHECK(reloaded.roots().size() == pdfsherpa::kMaxRoots);
+    CHECK(reloaded.roots().front().name == "root0");
+}
+
+TEST_CASE("roots win over folder when both are present", "[config][roots]")
+{
+    const ScopedAppData appdata;
+    // A profile the C++ app has written and the Python app has since opened:
+    // both keys exist, and "roots" is the authoritative one.
+    appdata.write_raw(R"({"folder": "C:\\ICD",
+                          "roots": [{"name": "A", "path": "C:\\a"},
+                                    {"name": "B", "path": "C:\\b"}]})");
+
+    Config config;
+    config.load();
+    REQUIRE(config.roots().size() == 2);
+    CHECK(config.roots()[0].path == "C:\\a");
+}
+
+TEST_CASE("a root entry with no path is skipped", "[config][roots]")
+{
+    const ScopedAppData appdata;
+    appdata.write_raw(R"({"roots": [{"name": "broken"},
+                                    {"name": "fine", "path": "C:\\ok"}]})");
+
+    Config config;
+    config.load();
+    REQUIRE(config.roots().size() == 1);
+    CHECK(config.roots()[0].path == "C:\\ok");
 }
 
 TEST_CASE("a Python-written profile loads whole", "[config]")
