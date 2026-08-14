@@ -78,7 +78,13 @@ void ViewerPane::build_ui()
     // the splitter's minimum, and a horizontal box silently clips whatever
     // does not fit off the right edge rather than reflowing.  "Fit page"
     // disappeared entirely at narrow widths before this.
-    auto* nav = new wxWrapSizer(wxHORIZONTAL);
+    // wxREMOVE_LEADING_SPACES only, NOT the default flags.
+    //
+    // wxWRAPSIZER_DEFAULT_FLAGS includes wxEXTEND_LAST_ON_EACH_LINE, which
+    // stretches the last control on every row to fill the remaining width.
+    // Once the bar wraps, that made "Page" a full-width button on a row of
+    // its own -- it looked like a layout bug rather than a wrapped toolbar.
+    auto* nav = new wxWrapSizer(wxHORIZONTAL, wxREMOVE_LEADING_SPACES);
     prev_button_ = new wxButton(this, wxID_ANY, L"◀", wxDefaultPosition,
                                 wxSize(36, -1));
     next_button_ = new wxButton(this, wxID_ANY, L"▶", wxDefaultPosition,
