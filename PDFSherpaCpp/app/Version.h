@@ -10,7 +10,7 @@
 
 namespace pdfsherpa {
 
-inline constexpr const char* kAppVersion = "1.3.12";
+inline constexpr const char* kAppVersion = "2.0.0";
 inline constexpr const char* kAppName = "PDF Sherpa";
 
 }  // namespace pdfsherpa
