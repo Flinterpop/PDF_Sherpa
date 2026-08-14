@@ -10,7 +10,23 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # None of these are used at runtime, they arrive transitively and cost
+        # ~35 MB uncompressed.  All three are guarded optional imports in the
+        # packages that pull them, so dropping them cannot break an import:
+        #   numpy    <- PIL/Image.py's optional fromarray path (app.py only
+        #               ever calls Image.frombytes), and it drags a 20 MB
+        #               OpenBLAS DLL with it
+        #   fontTools <- pymupdf.Document.subset_fonts (try/except ImportError),
+        #               which this app never calls
+        #   lxml     <- fontTools.misc.etree, so it leaves with fontTools
+        'numpy',
+        'fontTools',
+        'lxml',
+        # 7.9 MB decoder for a format the app never opens; PIL skips plugins
+        # that fail to import.
+        'PIL.AvifImagePlugin',
+    ],
     noarchive=False,
     optimize=0,
 )
