@@ -40,17 +40,34 @@ ArchitecturesAllowed=x64compatible
 ; see the terms before installing.
 LicenseFile=..\LICENSE
 
-; Ask per-user vs per-machine and default to per-machine, per the workspace
-; convention.  {autopf} follows whichever the user picks.
+; Per-user, no elevation -- deliberately NOT the workspace default of
+; per-machine-with-a-dialog, and this must not be "corrected" in this release.
 ;
-; This is a deliberate change from the deprecated Python installer, which was
-; PrivilegesRequired=lowest.  It has a consequence the updater must honour:
-; the silent re-run has to pass /ALLUSERS or /CURRENTUSER matching where the
-; running exe actually lives, or it takes the per-machine default and plants a
-; SECOND copy beside the per-user one.  See install_scope_flag in
-; PDFSherpaCpp\app\Updater.cpp, which is tested for exactly that.
-PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog
+; The v2.0.0 release is a MIGRATION release: it is applied by the updater
+; built into the deprecated Python app, which every existing install is still
+; running.  That updater invokes the installer as
+;
+;     "<setup>" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES
+;
+; with no install-scope flag, because install_scope_flag did not exist when it
+; shipped.  Against PrivilegesRequired=admin that silent run either fails to
+; elevate, or elevates and installs to {commonpf}\PDF Sherpa while the
+; existing copy stays in {userpf}\PDF Sherpa -- a second copy, with the old
+; one still polling for updates.  Either way the migration breaks, for every
+; existing user, silently.
+;
+; {autopf} under PrivilegesRequired=lowest resolves to {userpf}
+; (%LOCALAPPDATA%\Programs), which is exactly where the Python installer put
+; it, so the update lands on top of the existing install as intended.
+;
+; WHEN TO CHANGE THIS: once a release has shipped that everyone is running the
+; C++ updater from, this can become PrivilegesRequired=admin plus
+; PrivilegesRequiredOverridesAllowed=dialog.  That updater passes
+; /ALLUSERS or /CURRENTUSER matching where the running exe actually lives --
+; see install_scope_flag in PDFSherpaCpp\app\Updater.cpp, which exists for
+; this and is tested for it.  Do not make that change in the same release
+; that migrates people onto it.
+PrivilegesRequired=lowest
 
 [Files]
 Source: "{#BuildDir}\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
