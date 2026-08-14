@@ -22,6 +22,10 @@ namespace fs = std::filesystem;
 const wxColour kBookmarkedColour(0x1E, 0x5A, 0xA8);
 const wxColour kNoMetadataColour(0x80, 0x80, 0x80);
 
+// Height of the favorites pane before the user has dragged it anywhere.
+// Roughly five rows: enough to be useful without crowding out the PDF list.
+constexpr int kDefaultFavSash = 130;
+
 std::string to_lower(std::string text)
 {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
@@ -60,23 +64,45 @@ void PdfListPane::build_ui()
 {
     auto* outer = new wxBoxSizer(wxVERTICAL);
 
-    outer->Add(new wxStaticText(this, wxID_ANY, L"Favorites"), 0,
-               wxLEFT | wxTOP, 4);
-    favorites_list_ = new wxListBox(this, wxID_ANY, wxDefaultPosition,
-                                    wxSize(-1, 90));
-    outer->Add(favorites_list_, 0, wxEXPAND | wxALL, 4);
+    // Favorites above, the filtered PDF tree below, with a draggable divider
+    // between them.  A fixed-height favorites list is wrong for a list that
+    // holds up to kMaxFavorites entries: it is either wasted space or too
+    // short to see them, and the user is the only one who knows which.  The
+    // position persists, the same way the bookmarks/topics sash does.
+    splitter_ = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition,
+                                     wxDefaultSize,
+                                     wxSP_LIVE_UPDATE | wxSP_3DSASH);
+    splitter_->SetMinimumPaneSize(48);
 
-    filter_box_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString);
+    auto* favorites_panel = new wxPanel(splitter_, wxID_ANY);
+    auto* fav_sizer = new wxBoxSizer(wxVERTICAL);
+    fav_sizer->Add(new wxStaticText(favorites_panel, wxID_ANY, L"Favorites"), 0,
+                   wxLEFT | wxTOP, 4);
+    favorites_list_ = new wxListBox(favorites_panel, wxID_ANY);
+    fav_sizer->Add(favorites_list_, 1, wxEXPAND | wxALL, 4);
+    favorites_panel->SetSizer(fav_sizer);
+
+    auto* list_panel = new wxPanel(splitter_, wxID_ANY);
+    auto* list_sizer = new wxBoxSizer(wxVERTICAL);
+    filter_box_ = new wxTextCtrl(list_panel, wxID_ANY, wxEmptyString);
     // Non-ASCII in a narrow literal is decoded in the ANSI codepage and comes
     // out as mojibake; the ellipsis here must be a wide literal.
     filter_box_->SetHint(L"Filter PDFs…");
-    outer->Add(filter_box_, 0, wxEXPAND | wxALL, 4);
+    list_sizer->Add(filter_box_, 0, wxEXPAND | wxALL, 4);
 
-    tree_ = new wxTreeCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+    tree_ = new wxTreeCtrl(list_panel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                            wxTR_HAS_BUTTONS | wxTR_HIDE_ROOT | wxTR_SINGLE |
                                wxTR_LINES_AT_ROOT);
-    outer->Add(tree_, 1, wxEXPAND | wxALL, 4);
+    list_sizer->Add(tree_, 1, wxEXPAND | wxALL, 4);
+    list_panel->SetSizer(list_sizer);
 
+    splitter_->SplitHorizontally(favorites_panel, list_panel, kDefaultFavSash);
+    // Growth goes to the PDF list, not the favorites, when the window is
+    // resized: the favorites list is bounded at kMaxFavorites entries and the
+    // tree is not.
+    splitter_->SetSashGravity(0.0);
+
+    outer->Add(splitter_, 1, wxEXPAND);
     SetSizer(outer);
 
     tree_->Bind(wxEVT_TREE_SEL_CHANGED, &PdfListPane::on_selection_changed, this);
@@ -164,25 +190,61 @@ void PdfListPane::rebuild_tree()
     std::map<std::string, wxTreeItemId> folder_items;
     const std::string needle = to_lower(filter_);
 
+    // Return the tree item for a root-relative folder path, creating every
+    // missing ancestor along the way so the tree is genuinely nested.
+    //
+    // Creating one node per distinct relative path instead would put
+    // "manuals/spec/annexes" on a single row hanging off the root -- a flat
+    // list of slash-separated names wearing a tree's clothes.  Each path
+    // component gets its own node, and each node is reused by every later
+    // entry beneath it.
+    const auto ensure_folder = [&](const std::string& rel) -> wxTreeItemId {
+        if (rel.empty()) {
+            return root;
+        }
+        const auto cached = folder_items.find(rel);
+        if (cached != folder_items.end()) {
+            return cached->second;
+        }
+
+        wxTreeItemId parent = root;
+        std::string prefix;
+        std::size_t start = 0;
+        // Bounded by the path length; relative_dir is always '/'-separated.
+        while (start <= rel.size()) {
+            const std::size_t slash = rel.find('/', start);
+            const std::string component = rel.substr(
+                start, (slash == std::string::npos) ? std::string::npos
+                                                    : slash - start);
+            if (!component.empty()) {
+                prefix = prefix.empty() ? component : prefix + "/" + component;
+                const auto found = folder_items.find(prefix);
+                if (found != folder_items.end()) {
+                    parent = found->second;
+                } else {
+                    const wxTreeItemId item = tree_->AppendItem(
+                        parent, wxString::FromUTF8(component));
+                    tree_->SetItemBold(item, true);
+                    folder_items.emplace(prefix, item);
+                    dir_by_item_.emplace(item, prefix);
+                    parent = item;
+                }
+            }
+            if (slash == std::string::npos) {
+                break;
+            }
+            start = slash + 1;
+        }
+        return parent;
+    };
+
     for (const PdfEntry& entry : entries_) {
         const std::string name = path_to_utf8(entry.path.filename());
         if (!needle.empty() && to_lower(name).find(needle) == std::string::npos) {
             continue;  // folders with no surviving child simply never appear
         }
 
-        wxTreeItemId parent = root;
-        if (!entry.relative_dir.empty()) {
-            const auto found = folder_items.find(entry.relative_dir);
-            if (found != folder_items.end()) {
-                parent = found->second;
-            } else {
-                parent = tree_->AppendItem(
-                    root, wxString::FromUTF8(entry.relative_dir));
-                tree_->SetItemBold(parent, true);
-                folder_items.emplace(entry.relative_dir, parent);
-                dir_by_item_.emplace(parent, entry.relative_dir);
-            }
-        }
+        const wxTreeItemId parent = ensure_folder(entry.relative_dir);
 
         wxString label = wxString::FromUTF8(name);
         if (!entry.has_metadata) {
@@ -435,6 +497,21 @@ void PdfListPane::on_favorite_menu(wxContextMenuEvent&)
     }, kRemove);
 
     PopupMenu(&menu);
+}
+
+std::optional<int> PdfListPane::sash_position() const
+{
+    if (splitter_ != nullptr && splitter_->IsSplit()) {
+        return splitter_->GetSashPosition();
+    }
+    return std::nullopt;
+}
+
+void PdfListPane::set_sash_position(int pixels)
+{
+    if (splitter_ != nullptr && pixels > 0) {
+        splitter_->SetSashPosition(pixels);
+    }
 }
 
 std::vector<fs::path> PdfListPane::pdfs_without_metadata() const

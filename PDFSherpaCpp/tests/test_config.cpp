@@ -273,25 +273,43 @@ TEST_CASE("expanded folders are written sorted, as Python writes them", "[config
     CHECK(after["expanded_folders"][2] == "zulu");
 }
 
-TEST_CASE("window state writes bm_sash only when it has one", "[config]")
+TEST_CASE("window state writes each sash only when it has one", "[config]")
 {
     const ScopedAppData appdata;
     Config config;
     config.load();
 
-    REQUIRE(config.save_window_state("1200x800+10+10", std::nullopt));
+    REQUIRE(config.save_window_state("1200x800+10+10", std::nullopt, std::nullopt));
     nlohmann::json after = nlohmann::json::parse(appdata.read_raw());
     CHECK(after["geometry"] == "1200x800+10+10");
     // Never written, so a sash saved by a previous run is not erased.
     CHECK_FALSE(after.contains("bm_sash"));
+    CHECK_FALSE(after.contains("fav_sash"));
 
-    REQUIRE(config.save_window_state("1000x700+0+0", 250));
+    REQUIRE(config.save_window_state("1000x700+0+0", 250, 130));
     after = nlohmann::json::parse(appdata.read_raw());
     CHECK(after["bm_sash"] == 250);
+    CHECK(after["fav_sash"] == 130);
 
-    REQUIRE(config.save_window_state("900x600+5+5", std::nullopt));
+    REQUIRE(config.save_window_state("900x600+5+5", std::nullopt, std::nullopt));
     after = nlohmann::json::parse(appdata.read_raw());
-    CHECK(after["bm_sash"] == 250);  // preserved, not cleared
+    CHECK(after["bm_sash"] == 250);   // preserved, not cleared
+    CHECK(after["fav_sash"] == 130);  // likewise
+}
+
+TEST_CASE("the favorites divider round-trips", "[config]")
+{
+    const ScopedAppData appdata;
+    Config config;
+    config.load();
+    CHECK_FALSE(config.fav_sash().has_value());
+
+    REQUIRE(config.save_window_state("800x600+0+0", std::nullopt, 175));
+
+    Config reloaded;
+    reloaded.load();
+    REQUIRE(reloaded.fav_sash().has_value());
+    CHECK(*reloaded.fav_sash() == 175);
 }
 
 TEST_CASE("a Python-written profile loads whole", "[config]")

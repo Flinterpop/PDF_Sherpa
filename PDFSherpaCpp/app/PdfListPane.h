@@ -7,10 +7,12 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
+#include <wx/splitter.h>
 #include <wx/treectrl.h>
 #include <wx/wx.h>
 
@@ -61,6 +63,10 @@ public:
     // PDFs under the current folder that have no topics file yet.
     std::vector<std::filesystem::path> pdfs_without_metadata() const;
 
+    // Where the user dragged the favorites/PDF-list divider, in pixels.
+    std::optional<int> sash_position() const;
+    void set_sash_position(int pixels);
+
 private:
     void build_ui();
     void rebuild_tree();
@@ -85,6 +91,7 @@ private:
     std::vector<std::string> favorites_;
     std::set<std::string> expanded_;
 
+    wxSplitterWindow* splitter_ = nullptr;
     wxListBox* favorites_list_ = nullptr;
     wxTextCtrl* filter_box_ = nullptr;
     wxTreeCtrl* tree_ = nullptr;

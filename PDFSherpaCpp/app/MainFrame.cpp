@@ -58,6 +58,9 @@ MainFrame::MainFrame(const fs::path& folder, Config config)
     if (config_.bm_sash().has_value()) {
         topics_->set_sash_position(*config_.bm_sash());
     }
+    if (config_.fav_sash().has_value()) {
+        pdf_list_->set_sash_position(*config_.fav_sash());
+    }
 
     apply_pane_visibility(false);
 
@@ -472,7 +475,8 @@ void MainFrame::on_close(wxCloseEvent& event)
         event.Veto();
         return;
     }
-    config_.save_window_state(current_geometry(), topics_->sash_position());
+    config_.save_window_state(current_geometry(), topics_->sash_position(),
+                              pdf_list_->sash_position());
     config_.save_expanded_folders(pdf_list_->expanded_folders());
     event.Skip();
 }

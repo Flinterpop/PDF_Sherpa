@@ -227,6 +227,14 @@ void Config::load()
         }
     }
 
+    fav_sash_.reset();
+    if (document.contains("fav_sash") && document["fav_sash"].is_number_integer()) {
+        const int sash = document["fav_sash"].get<int>();
+        if (sash > 0) {
+            fav_sash_ = sash;
+        }
+    }
+
     check_updates_ = bool_at(document, "check_updates", true);
     show_pdf_list_ = bool_at(document, "show_pdf_list", true);
     show_topics_ = bool_at(document, "show_topics", true);
@@ -312,15 +320,21 @@ bool Config::save_pane_visibility(bool show_pdf_list, bool show_topics)
 }
 
 bool Config::save_window_state(const std::string& geometry,
-                               std::optional<int> bm_sash)
+                               std::optional<int> bm_sash,
+                               std::optional<int> fav_sash)
 {
     geometry_ = geometry;
     json patch = json{{"geometry", geometry}};
     // _on_close only writes bm_sash when it has one, so an unset sash keeps
-    // whatever the previous run stored rather than erasing it.
+    // whatever the previous run stored rather than erasing it.  Same for the
+    // favorites divider, which does not exist while the pane is unsplit.
     if (bm_sash.has_value()) {
         bm_sash_ = bm_sash;
         patch["bm_sash"] = *bm_sash;
+    }
+    if (fav_sash.has_value()) {
+        fav_sash_ = fav_sash;
+        patch["fav_sash"] = *fav_sash;
     }
     return merge_write(patch);
 }

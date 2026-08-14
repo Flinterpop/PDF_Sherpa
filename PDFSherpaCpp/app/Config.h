@@ -56,6 +56,10 @@ public:
     const std::string& geometry() const { return geometry_; }
     const std::string& skip_version() const { return skip_version_; }
     std::optional<int> bm_sash() const { return bm_sash_; }
+    // Divider between the favorites list and the PDF tree.  A port-only key:
+    // the Python app has no such divider, and it preserves keys it does not
+    // know, so writing it is safe for a shared profile.
+    std::optional<int> fav_sash() const { return fav_sash_; }
     bool check_updates() const { return check_updates_; }
     bool show_pdf_list() const { return show_pdf_list_; }
     bool show_topics() const { return show_topics_; }
@@ -80,7 +84,8 @@ public:
     bool save_pane_visibility(bool show_pdf_list, bool show_topics);
     // Written together on close, as _on_close does, so one write closes the
     // window rather than two racing ones.
-    bool save_window_state(const std::string& geometry, std::optional<int> bm_sash);
+    bool save_window_state(const std::string& geometry, std::optional<int> bm_sash,
+                           std::optional<int> fav_sash);
 
     // Record the reading position for a PDF, pruning the least recently viewed
     // entries past kMaxRememberedPages.
@@ -93,6 +98,7 @@ private:
     std::string geometry_;
     std::string skip_version_;
     std::optional<int> bm_sash_;
+    std::optional<int> fav_sash_;
     bool check_updates_ = true;
     bool show_pdf_list_ = true;
     bool show_topics_ = true;
