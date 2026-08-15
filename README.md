@@ -27,7 +27,7 @@ The original Python/Tkinter implementation (`app.py`, `tocgen.py`) is **deprecat
 Both read and write the same `%APPDATA%\PDFGuide\config.json`, and the same `.toc` / `.bookmarks.json` sidecars, so a profile written by either still works in the other.
 
 ## Screenshot
-<img width="397" height="50" alt="image" src="https://github.com/user-attachments/assets/96909116-8ad6-447f-a753-64f2268caab0" />
+<img width="1092" height="985" alt="PDFSherpa" src="https://github.com/user-attachments/assets/649ccef3-3849-4581-a10c-01aa30045e4d" />
 
 
 
