@@ -27,7 +27,8 @@ The original Python/Tkinter implementation (`app.py`, `tocgen.py`) is **deprecat
 Both read and write the same `%APPDATA%\PDFGuide\config.json`, and the same `.toc` / `.bookmarks.json` sidecars, so a profile written by either still works in the other.
 
 ## Screenshot
-<img width="1427" height="1209" alt="image" src="https://github.com/user-attachments/assets/63af4bb8-e27c-4956-ace1-ff0c47cd110b" />
+<img width="397" height="50" alt="image" src="https://github.com/user-attachments/assets/b39f54d6-fd62-48bc-8fd6-a4860f86e547" />
+
 
 ## Run
 
