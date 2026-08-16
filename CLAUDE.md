@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-*Last updated: 13 Aug 2026*
+*Last updated: 16 Aug 2026*
 
 Guidance for Claude Code working in this repository.
 
@@ -62,6 +62,22 @@ Full prerequisites and the msbuild line are in [README.md](README.md). Two thing
 
 Everything else comes from vcpkg in **classic** mode. Do not add a `vcpkg.json`: it switches the toolchain to manifest mode and rebuilds wxWidgets from source for no gain.
 
+## Nothing that touches the filesystem in bulk runs on the UI thread
+
+`ViewerPane::start_search` set the shape and everything else now follows it: a worker thread, an atomic generation counter the worker polls so a superseded result is discarded rather than applied out of order, an `alive_` flag the destructor clears so a completion lambda can tell the pane is gone, and results applied only through `CallAfter`. The whole worker body is wrapped in `try/catch`, because an uncaught exception on a detached thread is a silent `std::terminate` — exit code `0xC0000409`, no dialog.
+
+What moved, and why it had to:
+
+- **`PdfListPane::rescan()`.** Not just a directory listing: per PDF it stats for a topics file and reads and JSON-parses the sidecar bookmarks file. It ran in the `MainFrame` constructor, *before the first paint*. Because the tree is no longer populated when `rescan()` returns, anything that wants to select a row after a rescan uses `select_pdf_when_ready()` — `select_pdf()` alone silently does nothing, there being no rows yet.
+- **`write_toc()` on every PDF without a topics file**, from Refresh and from the drop handler. It reads text from every page, so a handful of large documents froze the window for minutes behind a `wxBusyCursor`. Both callers now go through `run_progress_job()` (`app/ProgressJob.h`), which owns the worker and a cancellable `wxPD_APP_MODAL` progress dialog.
+
+Two rules that fall out of this:
+
+- **A worker may not put up a dialog.** The drop handler therefore answers every "replace this file?" question on the UI thread first, building a worklist, and only then hands the copying and indexing to the worker. Interleaving the two would reintroduce exactly the freeze being fixed.
+- **One `PdfDocument` owns one `fz_context` and is not shared across threads.** A worker opens its own document; `fz_new_context(nullptr, nullptr, ...)` makes a fully independent context, so this is safe, and reopening costs microseconds against the work being done.
+
+`wxPD_APP_MODAL` is load-bearing rather than cosmetic: it is what stops a second job, a folder change or a close being started on top of a running one, which is what guarantees the parent window outlives the job.
+
 ## Traps that have already cost time here
 
 - **`wxTreeCtrl::SetItemData` takes ownership and deletes the pointer.** Never cast a row index into it. Index 0 becomes `nullptr` and deletes harmlessly, so a one-row list works and a two-row list crashes with an access violation, presenting as a startup crash nowhere near the tree code. Use a real `wxTreeItemData` subclass.
@@ -70,6 +86,8 @@ Everything else comes from vcpkg in **classic** mode. Do not add a `vcpkg.json`:
 - **Non-ASCII in a narrow string literal renders as mojibake.** `tests/test_source_literals.cpp` fails the build on it; write `L"…"` or `wxString::FromUTF8(...)`. It has already caught two real occurrences.
 - **All MuPDF calls stay in `PdfDocument.cpp`.** `fz_try`/`fz_catch` are `setjmp` macros: they trip C4611 (an error under `/W4 /WX`) in whatever translation unit expands them, and `longjmp` does not run destructors. The CMake dependency is `PRIVATE` to enforce this at build time.
 - **A running instance locks the exe** and the link fails with `LNK1104`, which reads as "my change did nothing". `release.ps1` checks and asks you to close it rather than killing it.
+- **A wxFrame does not inherit the exe's icon.** `PDFSherpa.rc` gives the executable one, so Explorer, the shortcut and the uninstall entry all looked right while the window itself wore the generic default — which is why this went unnoticed. `MainFrame` loads it as a *resource*, `icon.LoadFile("#1", wxBITMAP_TYPE_ICO_RESOURCE)`, `"#1"` being the ordinal the `.rc` assigns. Loading it as a file instead needs an ICO image handler registered and, without one, pops "No image handler for type 3 defined" at every launch.
+- **Driving this app from a script needs `SetProcessDPIAware()` first.** A DPI-unaware harness is handed virtualised coordinates: `GetWindowRect` answers in logical pixels while `CopyFromScreen` and `SetCursorPos` work in physical ones, so captures come out offset and scaled and clicks land on the wrong control. A click aimed at Refresh opened the Folders dialog instead.
 
 ## Testing
 

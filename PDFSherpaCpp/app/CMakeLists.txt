@@ -54,6 +54,8 @@ add_executable(PDFSherpa WIN32
     MainFrame.h
     PdfListPane.cpp
     PdfListPane.h
+    ProgressJob.cpp
+    ProgressJob.h
     TopicsPane.cpp
     TopicsPane.h
     UpdateCheck.cpp

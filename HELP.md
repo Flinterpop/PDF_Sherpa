@@ -1,6 +1,6 @@
 # PDF Sherpa — Help
 
-*Last updated: 14 Aug 2026*
+*Last updated: 16 Aug 2026*
 
 Vibe Coded with Claude Code using Fable 5 
 
@@ -10,7 +10,7 @@ PDF Sherpa lets you browse a folder of PDFs **by topic** and read them in a buil
 
 ## The three panes
 
-- **PDFs** (left) — every PDF found under your top-level folders, each shown as its own heading with subfolders nested beneath it. Click one to open it. The search box filters the list as you type.
+- **PDFs** (left) — every PDF found under your top-level folders, each shown as its own heading with subfolders nested beneath it. Click one to open it. The search box filters the list as you type. The list is built in the background, so the window is usable straight away and the status bar reads *Scanning folders…* until it is ready; on a folder held on a network share that can take a moment. The document you were last reading opens immediately rather than waiting for the scan, and its row is selected once the list appears.
   Right-click a PDF for **Open PDF** (in your default viewer), **Reveal in Explorer**, or **Add to favorites**; right-click a folder for **Show as flat list** or to open it in Explorer.
   **Show as flat list** collapses a folder's structure: it then lists every PDF beneath it, at any depth, with no subfolder rows — handy when you know the filename but not which subfolder it is in. It works on any folder, top-level or not, and each folder remembers its own setting, so you can flatten one and leave its neighbour as a tree. A flattened folder is marked `(flat)`; untick to get the tree back.
   A **Favorites** list sits above the search box: up to 10 pinned PDFs (newest first) that you can open in one click. Each row shows the PDF's path
@@ -28,15 +28,15 @@ choice is remembered across runs, and hidden panes keep their state (selection, 
 
 ## Adding PDFs
 
-**Drag and drop** one or more PDF files anywhere onto the window. Each is copied into an `inbox` subfolder of the top-level folder holding the currently selected PDF (or the first one, when nothing is selected), a topics file is
-generated automatically, and the last one is selected and opened for you.
+**Drag and drop** one or more PDF files anywhere onto the window. Each is copied into an `inbox` subfolder of the top-level folder holding the currently selected PDF (or the first one, when nothing is selected), a topics file is generated automatically, and the last one is selected and opened for you.
+
+If a file of that name is already in the inbox you are asked whether to replace it, and all of those questions are asked up front — the copying and indexing then run together behind a progress dialog naming the file being worked on, with a **Cancel** button. Cancelling stops before the next file; whatever was already added stays added.
 
 ## Topic (.toc) files
 
-Every PDF can have a companion topics file with the same base name — for example `manual.pdf` pairs with `manual.toc`. If a PDF has none, it shows as
-`(no metadata)`. Press **Refresh** (or `F5`) and choose to build topic lists:
-Sherpa reads each PDF's built-in outline bookmarks (not your own `Ctrl+B` bookmarks), or falls back to detecting headings from the text when there are
-none.
+Every PDF can have a companion topics file with the same base name — for example `manual.pdf` pairs with `manual.toc`. If a PDF has none, it shows as `(no metadata)`. Press **Refresh** (or `F5`) and choose to build topic lists: Sherpa reads each PDF's built-in outline bookmarks (not your own `Ctrl+B` bookmarks), or falls back to detecting headings from the text when there are none.
+
+Building a topic list means reading text from **every page**, so a batch of large documents takes a while. A progress dialog shows which file is being read and how far through the batch it is, and **Cancel** stops after the file in progress — the lists already built are kept, and pressing **Refresh** again picks up where it left off, since only PDFs still without a topics file are offered.
 
 A `.toc` is a plain text file you can edit by hand — the page is the trailing number, so topics may contain colons and dashes:
 

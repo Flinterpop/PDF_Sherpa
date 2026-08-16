@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include <wx/display.h>
 #include <wx/tglbtn.h>
@@ -15,6 +17,7 @@
 #include "Metadata.h"
 #include "PathUtf8.h"
 #include "PdfListPane.h"
+#include "ProgressJob.h"
 #include "TocGen.h"
 #include "TopicsPane.h"
 #include "UpdateCheck.h"
@@ -39,6 +42,16 @@ constexpr int kUpdateTimerId = 1001;
 // How long after the window appears to check for updates.  app.py uses 2 s,
 // for the same reason: the check must not compete with the first render.
 constexpr int kUpdateDelayMs = 2000;
+
+// One dropped PDF, after the user has answered for it and before any of the
+// work has been done.  `copy` is false when the file the user dropped IS the
+// one already in the inbox, which still wants indexing but must not be copied
+// over itself.
+struct DropItem {
+    fs::path src;
+    fs::path dest;
+    bool copy = true;
+};
 
 }  // namespace
 
@@ -65,11 +78,29 @@ MainFrame::MainFrame(const fs::path& override_root, Config config)
     }
 
     pdf_list_->set_favorites(config_.favorites());
-    pdf_list_->set_roots(std::move(roots));
+    // Before set_roots, not after: the scan is asynchronous now, and the set is
+    // re-applied by every rebuild, so it has to be in place when the results
+    // land rather than pushed at a tree that has no rows yet.
     pdf_list_->set_expanded_folders(config_.expanded_folders());
-    // After set_roots, not in build_ui(): the status bar is created before the
-    // roots are known, so the first call there always reports none.
-    update_status();
+    // The scan owns the status bar from here on.  A standalone update_status()
+    // after set_roots() would overwrite the "Scanning" message the scan has
+    // just put there, and the scan finishing is the only moment at which the
+    // folder summary is actually true.
+    pdf_list_->set_scan_state_handler([this](bool scanning) {
+        if (scanning) {
+            SetStatusText(L"Scanning folders…");
+        } else if (!pending_status_.empty()) {
+            SetStatusText(pending_status_);
+            pending_status_.clear();
+        } else if (!current_pdf_.empty()) {
+            // open_pdf() owns the status bar once a document is showing; a
+            // scan finishing behind it must not quietly replace the path.
+            SetStatusText(wxString::FromUTF8(path_to_utf8(current_pdf_)));
+        } else {
+            update_status();
+        }
+    });
+    pdf_list_->set_roots(std::move(roots));
 
     if (config_.bm_sash().has_value()) {
         topics_->set_sash_position(*config_.bm_sash());
@@ -81,12 +112,18 @@ MainFrame::MainFrame(const fs::path& override_root, Config config)
     apply_pane_visibility(false);
 
     // Reopen the PDF the user was last reading, at the page they left off on.
+    //
+    // The scan started above has not landed, so there is no row to select yet
+    // and select_pdf() would silently do nothing.  Open the document straight
+    // away -- waiting for a scan of a network folder to finish before showing
+    // the page someone was already reading is the wrong trade -- and let its
+    // row light up when the tree fills in.  open_pdf() ignores the reopen the
+    // selection event then asks for.
     const fs::path last = path_from_utf8(config_.last_pdf());
     std::error_code ec;
     if (!config_.last_pdf().empty() && fs::is_regular_file(last, ec)) {
-        if (!pdf_list_->select_pdf(last)) {
-            open_pdf(last);  // still listed nowhere, but it does exist
-        }
+        open_pdf(last);
+        pdf_list_->select_pdf_when_ready(last);
     }
 
     Bind(wxEVT_CLOSE_WINDOW, &MainFrame::on_close, this);
@@ -164,6 +201,18 @@ void MainFrame::build_ui()
     auto* frame_sizer = new wxBoxSizer(wxVERTICAL);
     frame_sizer->Add(root, 1, wxEXPAND);
     SetSizer(frame_sizer);
+
+    // The title bar and Alt-Tab icon.  PDFSherpa.rc gives the EXE its icon, so
+    // Explorer and the shortcut looked right and this was easy to miss -- but
+    // a wxFrame does not inherit it, and without this the window wore the
+    // generic default.  Load it as a RESOURCE, not by reading the exe as an
+    // image file: the file form needs an ICO image handler registered and
+    // without one pops "No image handler for type 3 defined" at every launch.
+    // "#1" is the ordinal the .rc assigns it.
+    wxIcon icon;
+    if (icon.LoadFile("#1", wxBITMAP_TYPE_ICO_RESOURCE)) {
+        SetIcon(icon);
+    }
 
     CreateStatusBar();
     update_status();
@@ -285,6 +334,15 @@ void MainFrame::bind_shortcuts()
 
 void MainFrame::open_pdf(const fs::path& pdf_path)
 {
+    // Already showing: do nothing.  Selecting a row fires the selection event,
+    // which lands here, and the deferred selection that follows an
+    // asynchronous scan therefore asks for the document that is already open.
+    // Reloading it would throw away the page the user is on and re-prompt
+    // about annotations they have already answered for.
+    if (pdf_path == current_pdf_ && viewer_->has_document()) {
+        return;
+    }
+
     // Unsaved highlights belong to the document that is about to go away, so
     // offer to keep them before it does.  A cancel abandons the switch.
     if (!viewer_->maybe_save_annotations()) {
@@ -312,15 +370,19 @@ void MainFrame::manage_folders()
     }
 
     std::vector<Root> roots = dialog.roots();
-    pdf_list_->set_roots(roots);
+    // Before set_roots, which starts the scan: the expansion set is re-applied
+    // by every rebuild, so it has to be in place for the one that follows.
     pdf_list_->set_expanded_folders(config_.expanded_folders());
+    pdf_list_->set_roots(roots);
 
     // A command-line folder is a session override; persisting a change made
     // on top of it would quietly replace the user's saved folders.
     if (!roots_overridden_) {
         config_.save_roots(std::move(roots));
     }
-    update_status();
+    // No update_status() here: set_roots put "Scanning" in the status bar and
+    // the scan-state handler reports the new folders when it finishes.  Doing
+    // it now would only overwrite that with a summary of a scan still running.
 }
 
 void MainFrame::update_status()
@@ -337,25 +399,59 @@ void MainFrame::update_status()
 
 void MainFrame::refresh_folder()
 {
-    const std::vector<fs::path> missing = pdf_list_->pdfs_without_metadata();
-    if (!missing.empty()) {
-        const wxString question = wxString::Format(
-            "%zu PDF(s) here have no topics file.\n\nBuild topic lists for "
-            "them now?", missing.size());
-        if (wxMessageBox(question, L"Refresh", wxYES_NO | wxICON_QUESTION,
-                         this) == wxYES) {
-            wxBusyCursor busy;
-            int built = 0;
-            for (const fs::path& pdf : missing) {
-                if (write_toc(pdf).ok) {
-                    ++built;
-                }
-            }
-            SetStatusText(wxString::Format("Built %d topic list(s)", built));
-        }
+    // A scan already in flight has not produced its entry list yet, so
+    // pdfs_without_metadata() would answer from the previous one and offer to
+    // rebuild topics for files that may no longer be there.  Let it finish.
+    if (pdf_list_->scanning()) {
+        return;
     }
-    pdf_list_->rescan();
-    pdf_list_->set_expanded_folders(config_.expanded_folders());
+
+    const std::vector<fs::path> missing = pdf_list_->pdfs_without_metadata();
+    if (missing.empty()) {
+        pdf_list_->set_expanded_folders(config_.expanded_folders());
+        pdf_list_->rescan();
+        return;
+    }
+
+    const wxString question = wxString::Format(
+        "%zu PDF(s) here have no topics file.\n\nBuild topic lists for "
+        "them now?", missing.size());
+    if (wxMessageBox(question, L"Refresh", wxYES_NO | wxICON_QUESTION,
+                     this) != wxYES) {
+        pdf_list_->set_expanded_folders(config_.expanded_folders());
+        pdf_list_->rescan();
+        return;
+    }
+
+    // write_toc() reads text from every page of every one of these, which is
+    // where the window used to freeze for minutes behind a busy cursor.  The
+    // shared_ptr is what lets the worklist outlive this function: the job runs
+    // on a worker and the callbacks below are called long after we return.
+    auto work = std::make_shared<std::vector<fs::path>>(missing);
+    run_progress_job(
+        this, L"Building topic lists", work->size(),
+        [work](std::size_t index) {
+            return path_to_utf8((*work)[index].filename());
+        },
+        [work](std::size_t index) -> std::string {
+            // Worker thread: write_toc opens its own PdfDocument, and so its
+            // own fz_context, which is the only way MuPDF may be used here.
+            const TocResult result = write_toc((*work)[index]);
+            if (result.ok) {
+                return {};
+            }
+            return path_to_utf8((*work)[index].filename()) + ": " +
+                   result.error;
+        },
+        [this](ProgressJobResult result) {
+            pending_status_ = wxString::Format(
+                result.cancelled ? "Built %zu topic list(s) before cancelling"
+                                 : "Built %zu topic list(s)",
+                result.succeeded);
+            report_job_errors(L"Refresh", result.errors);
+            pdf_list_->set_expanded_folders(config_.expanded_folders());
+            pdf_list_->rescan();
+        });
 }
 
 void MainFrame::on_files_dropped(const std::vector<fs::path>& paths)
@@ -395,19 +491,24 @@ void MainFrame::on_files_dropped(const std::vector<fs::path>& paths)
         return;
     }
 
-    wxBusyCursor busy;
-    std::vector<fs::path> added;
-    std::vector<std::string> failed;
-
+    // Pass one, on the UI thread: every question the user has to answer, and
+    // no work beyond the stats needed to ask them.  The prompts have to be
+    // here, and they have to be finished before the copying starts -- a worker
+    // cannot put up a dialog, and interleaving the two would mean the window
+    // freezing between questions, which is the bug being fixed.
+    auto work = std::make_shared<std::vector<DropItem>>();
     for (const fs::path& src : pdfs) {
-        const fs::path dest = inbox / src.filename();
-        const std::string name = path_to_utf8(src.filename());
+        DropItem item;
+        item.src = src;
+        item.dest = inbox / src.filename();
 
-        if (fs::exists(dest, ec)) {
-            if (fs::equivalent(src, dest, ec) && !ec) {
-                added.push_back(dest);  // already in the inbox
+        if (fs::exists(item.dest, ec)) {
+            if (fs::equivalent(src, item.dest, ec) && !ec) {
+                item.copy = false;  // already in the inbox; index it in place
+                work->push_back(std::move(item));
                 continue;
             }
+            const std::string name = path_to_utf8(src.filename());
             if (wxMessageBox(wxString::FromUTF8(name +
                                  " is already in the inbox.\nReplace it?"),
                              L"Replace PDF?", wxYES_NO | wxICON_QUESTION,
@@ -415,49 +516,84 @@ void MainFrame::on_files_dropped(const std::vector<fs::path>& paths)
                 continue;
             }
         }
+        ec.clear();
+        work->push_back(std::move(item));
+    }
+    if (work->empty()) {
+        return;  // every one of them was declined
+    }
 
-        fs::copy_file(src, dest, fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            failed.push_back(name + ": " + ec.message());
-            ec.clear();
-            continue;
-        }
-        added.push_back(dest);
-
-        // Keep an existing (possibly hand-edited) topics file; only generate
-        // one when the PDF has no metadata yet.
-        if (!find_metadata_path(dest).has_value()) {
-            const TocResult result = write_toc(dest);
-            if (!result.ok) {
-                failed.push_back(name + ": added, but no topics built (" +
-                                 result.error + ")");
+    // Pass two, on a worker: the copy and the topic build, both of which are
+    // slow enough on a large document to stall the message loop.
+    const fs::path last_added = work->back().dest;
+    const std::size_t wanted = work->size();
+    run_progress_job(
+        this, L"Adding PDFs", wanted,
+        [work](std::size_t index) {
+            return path_to_utf8((*work)[index].src.filename());
+        },
+        [work](std::size_t index) -> std::string {
+            const DropItem& item = (*work)[index];
+            const std::string name = path_to_utf8(item.src.filename());
+            std::error_code copy_ec;
+            if (item.copy) {
+                fs::copy_file(item.src, item.dest,
+                              fs::copy_options::overwrite_existing, copy_ec);
+                if (copy_ec) {
+                    return name + ": " + copy_ec.message();
+                }
             }
-        }
-    }
+            // Keep an existing (possibly hand-edited) topics file; only
+            // generate one when the PDF has no metadata yet.
+            if (find_metadata_path(item.dest).has_value()) {
+                return {};
+            }
+            const TocResult result = write_toc(item.dest);
+            if (result.ok) {
+                return {};
+            }
+            return name + ": added, but no topics built (" + result.error + ")";
+        },
+        [this, last_added, wanted](ProgressJobResult result) {
+            // `succeeded`, not `completed`: a file that copied but whose topic
+            // build failed is counted as a problem and named in the dialog, so
+            // the number here must not quietly claim it went through.
+            pending_status_ = wxString::Format(
+                "Added %zu of %zu PDF(s) to the inbox", result.succeeded,
+                wanted);
+            report_job_errors(L"Drop PDFs", result.errors);
 
-    if (!added.empty()) {
-        // Show the inbox open so the new files are actually visible.
-        std::vector<std::string> expanded = config_.expanded_folders();
-        if (std::find(expanded.begin(), expanded.end(), "inbox") ==
-            expanded.end()) {
-            expanded.push_back("inbox");
-            config_.save_expanded_folders(expanded);
-        }
-        pdf_list_->rescan();
-        pdf_list_->set_expanded_folders(config_.expanded_folders());
-        pdf_list_->select_pdf(added.back());
-    }
+            // Show the inbox open so the new files are actually visible.
+            std::vector<std::string> expanded = config_.expanded_folders();
+            if (std::find(expanded.begin(), expanded.end(), "inbox") ==
+                expanded.end()) {
+                expanded.push_back("inbox");
+                config_.save_expanded_folders(expanded);
+            }
+            pdf_list_->set_expanded_folders(config_.expanded_folders());
+            pdf_list_->rescan();
+            // Not select_pdf(): the rescan just started has no rows yet.
+            pdf_list_->select_pdf_when_ready(last_added);
+        });
+}
 
-    if (!failed.empty()) {
-        std::string detail;
-        for (std::size_t i = 0; i < failed.size() && i < 10; ++i) {
-            detail += failed[i] + "\n";
-        }
-        wxMessageBox(
-            wxString::FromUTF8("Added " + std::to_string(added.size()) +
-                               " PDF(s) to the inbox.\n\nProblems:\n" + detail),
-            L"Drop PDFs", wxOK | wxICON_WARNING, this);
+void MainFrame::report_job_errors(const wxString& title,
+                                  const std::vector<std::string>& errors)
+{
+    if (errors.empty()) {
+        return;
     }
+    constexpr std::size_t kMaxShown = 10;
+    std::string detail;
+    for (std::size_t i = 0; i < errors.size() && i < kMaxShown; ++i) {
+        detail += errors[i] + "\n";
+    }
+    if (errors.size() > kMaxShown) {
+        detail += "... and " + std::to_string(errors.size() - kMaxShown) +
+                  " more\n";
+    }
+    wxMessageBox(wxString::FromUTF8("Problems:\n" + detail), title,
+                 wxOK | wxICON_WARNING, this);
 }
 
 void MainFrame::apply_pane_visibility(bool persist)

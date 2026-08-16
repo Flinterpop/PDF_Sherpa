@@ -4,6 +4,7 @@
 #include <cassert>
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -58,11 +59,102 @@ std::string relative_dir(const fs::path& root, const fs::path& file)
     return text;
 }
 
+// Walk every root and return one entry per PDF found.
+//
+// A free function, deliberately: this is the body of the scan worker, and it
+// must not be able to reach a single member of the pane.  Everything it needs
+// arrives by value, and the only thing it shares with the UI thread is the
+// generation counter it polls to find out it has been superseded.
+std::vector<PdfEntry> scan_roots(const std::vector<Root>& roots,
+                                 const std::atomic<unsigned>& generation,
+                                 unsigned mine)
+{
+    std::vector<PdfEntry> entries;
+
+    for (std::size_t index = 0; index < roots.size(); ++index) {
+        const fs::path root = path_from_utf8(roots[index].path);
+        std::error_code ec;
+        if (roots[index].path.empty() || !fs::is_directory(root, ec)) {
+            continue;  // a root on an unplugged drive is skipped, not fatal
+        }
+
+        // operator++ on a recursive_directory_iterator THROWS on an unreadable
+        // entry even when the iterator was built with the error_code overload,
+        // so the walk is explicit.  A range-for dies on the first locked
+        // folder.
+        fs::recursive_directory_iterator it(
+            root, fs::directory_options::skip_permission_denied, ec);
+        const fs::recursive_directory_iterator end;
+
+        // A bound the walk cannot exceed, so a pathological tree (or a symlink
+        // loop the iterator does not catch) cannot run forever.
+        constexpr std::size_t kMaxEntriesPerRoot = 200000;
+        std::size_t visited = 0;
+
+        while (!ec && it != end && visited < kMaxEntriesPerRoot) {
+            // Polled per entry, not per root: this is what lets the destructor
+            // and stop_scan() join promptly instead of waiting out a walk of a
+            // slow network share whose answer is already unwanted.
+            if (generation.load() != mine) {
+                return {};
+            }
+            ++visited;
+            const fs::directory_entry entry = *it;
+            if (entry.is_regular_file(ec) && is_pdf(entry.path())) {
+                PdfEntry pdf;
+                pdf.path = entry.path();
+                pdf.root_index = index;
+                pdf.relative_dir = relative_dir(root, entry.path());
+                pdf.has_metadata = find_metadata_path(entry.path()).has_value();
+                pdf.has_bookmarks = !load_bookmarks(entry.path()).empty();
+                entries.push_back(std::move(pdf));
+            }
+            it.increment(ec);
+        }
+        ec.clear();
+    }
+
+    // Roots keep their configured order; within a root, folder then filename.
+    std::stable_sort(entries.begin(), entries.end(),
+                     [](const PdfEntry& a, const PdfEntry& b) {
+                         if (a.root_index != b.root_index) {
+                             return a.root_index < b.root_index;
+                         }
+                         if (a.relative_dir != b.relative_dir) {
+                             return a.relative_dir < b.relative_dir;
+                         }
+                         return a.path.filename() < b.path.filename();
+                     });
+    return entries;
+}
+
 }  // namespace
 
-PdfListPane::PdfListPane(wxWindow* parent) : wxPanel(parent, wxID_ANY)
+PdfListPane::PdfListPane(wxWindow* parent)
+    : wxPanel(parent, wxID_ANY),
+      alive_(std::make_shared<std::atomic<bool>>(true)),
+      scan_generation_(std::make_shared<std::atomic<unsigned>>(0))
 {
     build_ui();
+}
+
+PdfListPane::~PdfListPane()
+{
+    // Order matters: clearing alive_ first means a completion lambda already
+    // queued behind us returns without touching a half-destroyed pane, and the
+    // join then guarantees the worker itself is gone before the members it
+    // captured by value are.
+    alive_->store(false);
+    stop_scan();
+}
+
+void PdfListPane::stop_scan()
+{
+    scan_generation_->fetch_add(1);
+    if (scan_worker_.joinable()) {
+        scan_worker_.join();
+    }
+    scanning_ = false;
 }
 
 void PdfListPane::build_ui()
@@ -150,59 +242,68 @@ void PdfListPane::set_roots(std::vector<Root> roots)
 
 void PdfListPane::rescan()
 {
-    entries_.clear();
+    // Supersede whatever is in flight before starting: assigning over a
+    // joinable std::thread calls std::terminate, and a stale result applied
+    // after a newer one would silently show the wrong folders.
+    stop_scan();
 
-    for (std::size_t index = 0; index < roots_.size(); ++index) {
-        const fs::path root = path_from_utf8(roots_[index].path);
-        std::error_code ec;
-        if (roots_[index].path.empty() || !fs::is_directory(root, ec)) {
-            continue;  // a root on an unplugged drive is skipped, not fatal
-        }
-
-        // operator++ on a recursive_directory_iterator THROWS on an unreadable
-        // entry even when the iterator was built with the error_code overload,
-        // so the walk is explicit.  A range-for dies on the first locked
-        // folder.
-        fs::recursive_directory_iterator it(
-            root, fs::directory_options::skip_permission_denied, ec);
-        const fs::recursive_directory_iterator end;
-
-        // A bound the walk cannot exceed, so a pathological tree (or a symlink
-        // loop the iterator does not catch) cannot hang the UI indefinitely.
-        constexpr std::size_t kMaxEntriesPerRoot = 200000;
-        std::size_t visited = 0;
-
-        while (!ec && it != end && visited < kMaxEntriesPerRoot) {
-            ++visited;
-            const fs::directory_entry entry = *it;
-            if (entry.is_regular_file(ec) && is_pdf(entry.path())) {
-                PdfEntry pdf;
-                pdf.path = entry.path();
-                pdf.root_index = index;
-                pdf.relative_dir = relative_dir(root, entry.path());
-                pdf.has_metadata = find_metadata_path(entry.path()).has_value();
-                pdf.has_bookmarks = !load_bookmarks(entry.path()).empty();
-                entries_.push_back(std::move(pdf));
-            }
-            it.increment(ec);
-        }
-        ec.clear();
+    scanning_ = true;
+    if (on_scan_state_) {
+        on_scan_state_(true);
     }
 
-    // Roots keep their configured order; within a root, folder then filename.
-    std::stable_sort(entries_.begin(), entries_.end(),
-                     [](const PdfEntry& a, const PdfEntry& b) {
-                         if (a.root_index != b.root_index) {
-                             return a.root_index < b.root_index;
-                         }
-                         if (a.relative_dir != b.relative_dir) {
-                             return a.relative_dir < b.relative_dir;
-                         }
-                         return a.path.filename() < b.path.filename();
-                     });
+    // Copied, not referenced: roots_ belongs to the UI thread and the user can
+    // change it from the Folders dialog while this walk is still running.
+    const std::vector<Root> roots = roots_;
+    auto alive = alive_;
+    auto generation_cell = scan_generation_;
+    const unsigned generation = generation_cell->load();
 
-    rebuild_tree();
-    rebuild_favorites();
+    scan_worker_ = std::thread([this, alive, generation_cell, generation,
+                                roots]() {
+        // An uncaught exception on a worker is a silent std::terminate with
+        // exit code 0xC0000409 and no dialog, so the whole body is guarded.
+        try {
+            std::vector<PdfEntry> found =
+                scan_roots(roots, *generation_cell, generation);
+
+            wxTheApp->CallAfter([this, alive, generation_cell, generation,
+                                 found = std::move(found)]() mutable {
+                if (!alive->load() || generation_cell->load() != generation) {
+                    return;  // the pane is gone, or a newer scan has won
+                }
+                entries_ = std::move(found);
+                scanning_ = false;
+                rebuild_tree();
+                rebuild_favorites();
+
+                // Deferred selection, now that there are rows to select.  One
+                // shot either way: a path this scan did not turn up is not
+                // going to appear in the next one for the same reason.
+                if (!pending_selection_.empty()) {
+                    const fs::path wanted = pending_selection_;
+                    pending_selection_.clear();
+                    select_pdf(wanted);
+                }
+                if (on_scan_state_) {
+                    on_scan_state_(false);
+                }
+            });
+        } catch (...) {
+            // Nothing useful to do here, but dying quietly beats terminating
+            // the process.  The UI keeps the previous results and the status
+            // is cleared below rather than left saying "Scanning".
+            wxTheApp->CallAfter([this, alive, generation_cell, generation]() {
+                if (!alive->load() || generation_cell->load() != generation) {
+                    return;
+                }
+                scanning_ = false;
+                if (on_scan_state_) {
+                    on_scan_state_(false);
+                }
+            });
+        }
+    });
 }
 
 fs::path PdfListPane::drop_root() const
@@ -413,6 +514,17 @@ bool PdfListPane::select_pdf(const fs::path& pdf_path)
         }
     }
     return false;
+}
+
+void PdfListPane::select_pdf_when_ready(const fs::path& pdf_path)
+{
+    if (select_pdf(pdf_path)) {
+        return;
+    }
+    // Not listed yet.  Either a scan is running and will produce the row, or
+    // none is and this quietly does nothing -- which is exactly what the old
+    // synchronous select_pdf() did in the same situation.
+    pending_selection_ = pdf_path;
 }
 
 void PdfListPane::on_selection_changed(wxTreeEvent& event)

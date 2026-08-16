@@ -6,7 +6,7 @@
 ![GUI](https://img.shields.io/badge/GUI-wxWidgets-2A5DB0)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
-*Last updated: 13 Aug 2026*
+*Last updated: 16 Aug 2026*
 
 A small desktop app that lets you browse PDFs by topic.
 
@@ -17,6 +17,7 @@ A small desktop app that lets you browse PDFs by topic.
 - **Highlight text** — drag-select words on the page and save them as real PDF highlight annotations, into the original or an `(ann)` copy.
 - **Bookmarks** — mark pages with your own names (`Ctrl+B`); they show in their own list above the Topics and are saved beside the PDF in `name.bookmarks.json`. PDFs that have bookmarks are shown in **blue** in the list, so you can spot them at a glance.
 - **Drag & drop** — drop a PDF anywhere on the window to file it into an `inbox` subfolder with an auto-generated topics file.
+- **Nothing slow happens on the UI thread** — the folder scan, the topic-list builds and the drop handling all run on workers. The list is built in the background so the window is usable immediately, and building topic lists (which reads text from every page) runs behind a progress dialog you can cancel.
 
 ## Implementation
 
@@ -172,19 +173,8 @@ Page numbers are **1-based** (page 1 = the first page).
 - The app remembers the **last page you were on in each PDF** and returns there
   when you reopen it (positions are kept for the 200 most recently viewed
   PDFs, so the settings file never grows without bound).
-- A PDF without a metadata file is still listed (marked `(no metadata)`) and
-  viewable — you just won't get the topic list. **Refresh** (button or `F5`)
-  offers to **auto-build topic lists** for any PDFs that don't have one, using
-  each PDF's built-in outline bookmarks — or its text headings when there are
-  none. (These built-in bookmarks are separate from your own `Ctrl+B`
-  bookmarks.)
-- **Drop PDFs onto the window** (Windows only — from Explorer, Outlook
-  attachments saved to disk, etc.) and they are **copied into an `inbox`
-  subfolder** of the current folder, a **`.toc` topics file is auto-generated**
-  for each (bookmarks first, text headings as a fallback), and the last one
-  dropped is selected and opened. Dropping a PDF whose name is already in the
-  inbox asks before replacing it, and an existing (hand-edited) `.toc` is never
-  overwritten.
+- A PDF without a metadata file is still listed (marked `(no metadata)`) and viewable — you just won't get the topic list. **Refresh** (button or `F5`) offers to **auto-build topic lists** for any PDFs that don't have one, using each PDF's built-in outline bookmarks — or its text headings when there are none. (These built-in bookmarks are separate from your own `Ctrl+B` bookmarks.) Building a list reads text from **every page**, so a batch of large documents runs behind a progress dialog naming the current file, with **Cancel**; the lists already built are kept, and pressing Refresh again resumes, since only PDFs still lacking one are offered.
+- **Drop PDFs onto the window** (Windows only — from Explorer, Outlook attachments saved to disk, etc.) and they are **copied into an `inbox` subfolder** of the current folder, a **`.toc` topics file is auto-generated** for each (bookmarks first, text headings as a fallback), and the last one dropped is selected and opened. Dropping a PDF whose name is already in the inbox asks before replacing it, and an existing (hand-edited) `.toc` is never overwritten. Every replace question is asked first, before any copying starts; the copying and indexing then run together behind a cancellable progress dialog.
 - Viewer controls: **Prev/Next**, **+/−** zoom, **Fit width**, **Full page**,
   and mouse-wheel scrolling. Your **Fit width / Full page** choice is remembered
   and re-applied to every PDF you open — and it persists across app runs

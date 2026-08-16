@@ -36,6 +36,11 @@ private:
     void refresh_folder();
     // Copy dropped PDFs into <folder>/inbox and build any missing .toc files.
     void on_files_dropped(const std::vector<std::filesystem::path>& paths);
+    // Show what a background job could not do, or nothing at all when it did
+    // everything.  Capped, because the list comes from a folder scan and a
+    // dialog with 400 lines in it is not a report.
+    void report_job_errors(const wxString& title,
+                           const std::vector<std::string>& errors);
     void apply_pane_visibility(bool persist);
     void on_close(wxCloseEvent& event);
 
@@ -49,6 +54,11 @@ private:
     // root changes for the session.
     bool roots_overridden_ = false;
     std::filesystem::path current_pdf_;
+    // Shown when the scan that follows a background job finishes.  A job's
+    // outcome ("Built 12 topic lists") is worth reading, and setting it
+    // directly would be pointless: the rescan the job starts immediately puts
+    // "Scanning folders" over the top of it.
+    wxString pending_status_;
 
     wxSplitterWindow* outer_split_ = nullptr;
     wxSplitterWindow* inner_split_ = nullptr;

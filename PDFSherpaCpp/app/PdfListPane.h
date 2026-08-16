@@ -3,17 +3,40 @@
 //
 // Each configured root is a top-level node in the tree, with its own subfolder
 // hierarchy nested beneath it.
+//
+// THE SCAN RUNS ON A WORKER THREAD, and anything added here that touches the
+// filesystem in bulk must too.  The walk is not just a directory listing: for
+// every PDF it stats for a topics file and reads and JSON-parses the sidecar
+// bookmarks file, so a root on a network share froze the window for as long as
+// that took -- including in the MainFrame constructor, before the first paint.
+//
+// The shape is the one ViewerPane::start_search already uses:
+//
+//   - a worker thread, never the UI thread;
+//   - a generation counter bumped on each start, so a superseded result is
+//     discarded instead of applied out of order.  It is std::atomic because
+//     the WORKER polls it mid-walk to abandon a scan the user has already
+//     replaced -- a plain unsigned would be a data race;
+//   - `alive_`, a shared flag the destructor clears, so a completion lambda
+//     can tell the pane is gone;
+//   - the results applied by CallAfter on the UI thread, and nowhere else.
+//
+// Because the scan is now asynchronous, nothing may assume the tree is
+// populated when rescan() returns -- see select_pdf_when_ready().
 
 #ifndef PDFSHERPA_APP_PDF_LIST_PANE_H
 #define PDFSHERPA_APP_PDF_LIST_PANE_H
 
+#include <atomic>
 #include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <wx/splitter.h>
@@ -36,15 +59,34 @@ struct PdfEntry {
 class PdfListPane : public wxPanel {
 public:
     explicit PdfListPane(wxWindow* parent);
+    ~PdfListPane() override;
 
-    // Rescan every root and rebuild the tree.
+    // Start a rescan of every root.  Returns immediately; the tree keeps
+    // showing the previous results until the new ones land.
     void set_roots(std::vector<Root> roots);
     const std::vector<Root>& roots() const { return roots_; }
 
     void refresh_row(const std::filesystem::path& pdf_path);
     void rescan();
 
+    // True from the moment a scan starts until its results have been applied.
+    bool scanning() const { return scanning_; }
+
+    // Called on the UI thread when a scan starts (true) and when its results
+    // have been applied (false), so the frame can say so in the status bar.
+    void set_scan_state_handler(std::function<void(bool)> h)
+    {
+        on_scan_state_ = std::move(h);
+    }
+
     bool select_pdf(const std::filesystem::path& pdf_path);
+
+    // Select `pdf_path` now if its row exists, otherwise once the scan in
+    // flight has landed.  This is what callers want after starting a rescan:
+    // select_pdf() alone would silently do nothing, because the rows it looks
+    // through are not built yet.  One shot -- a path the next scan does not
+    // find is forgotten rather than retried forever.
+    void select_pdf_when_ready(const std::filesystem::path& pdf_path);
 
     void set_selection_handler(std::function<void(const std::filesystem::path&)> h)
     {
@@ -87,6 +129,10 @@ public:
 
 private:
     void build_ui();
+    // Bump the generation and join the worker, so no in-flight result can be
+    // applied afterwards.  Joining rather than detaching is safe because the
+    // walk polls the generation on every entry.
+    void stop_scan();
     void rebuild_tree();
     void rebuild_favorites();
     void on_selection_changed(wxTreeEvent& event);
@@ -115,6 +161,12 @@ private:
     std::vector<std::string> favorites_;
     std::set<std::string> expanded_;
 
+    std::thread scan_worker_;
+    std::shared_ptr<std::atomic<bool>> alive_;
+    std::shared_ptr<std::atomic<unsigned>> scan_generation_;
+    bool scanning_ = false;  // UI thread only
+    std::filesystem::path pending_selection_;
+
     wxSplitterWindow* splitter_ = nullptr;
     wxListBox* favorites_list_ = nullptr;
     wxTextCtrl* filter_box_ = nullptr;
@@ -125,6 +177,7 @@ private:
 
     std::function<void(const std::filesystem::path&)> on_selected_;
     std::function<void()> on_favorites_changed_;
+    std::function<void(bool)> on_scan_state_;
     std::function<bool(const std::filesystem::path&)> is_flat_folder_;
     std::function<void(const std::filesystem::path&)> on_toggle_flat_;
 };
