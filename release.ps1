@@ -48,10 +48,12 @@ function CheckExit($what) {
 
 # --- Preflight ---------------------------------------------------------------
 # Inno Setup has moved between homes on this machine, so try each in turn
-# rather than trusting one path.
+# rather than trusting one path. %LOCALAPPDATA% is NOT among them: the
+# workspace rule puts AppData out of reach, and a fallback that quietly
+# found ISCC there would be that rule broken by a path nobody typed. The
+# per-user install was uninstalled on 2026-09-22; C:\bin\InnoSetup6 is home.
 $isccCandidates = @(
     "C:\bin\InnoSetup6\ISCC.exe",
-    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
     "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
 )
