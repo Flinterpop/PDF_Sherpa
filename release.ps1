@@ -47,10 +47,18 @@ function CheckExit($what) {
 }
 
 # --- Preflight ---------------------------------------------------------------
-$iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
-if (-not (Test-Path $iscc)) {
+# Inno Setup has moved between homes on this machine, so try each in turn
+# rather than trusting one path.
+$isccCandidates = @(
+    "C:\bin\InnoSetup6\ISCC.exe",
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+)
+$iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $iscc) {
     $cmd = Get-Command iscc -ErrorAction SilentlyContinue
-    if ($cmd) { $iscc = $cmd.Source } else { Fail "ISCC.exe not found (Inno Setup 6)" }
+    if ($cmd) { $iscc = $cmd.Source } else { Fail "ISCC.exe not found. Tried: $($isccCandidates -join '; ')" }
 }
 foreach ($tool in "cmake", "git", "gh") {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "$tool not on PATH" }
