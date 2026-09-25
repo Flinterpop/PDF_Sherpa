@@ -1,14 +1,14 @@
-# PDF Sherpa
+# PDFBoss
 
-[![GitHub repo](https://img.shields.io/badge/GitHub-Flinterpop%2FPDF__Sherpa-181717?logo=github)](https://github.com/Flinterpop/PDF_Sherpa)
+[![GitHub repo](https://img.shields.io/badge/GitHub-Flinterpop%2FPDFBoss-181717?logo=github)](https://github.com/Flinterpop/PDFBoss)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
 ![Language](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)
 ![GUI](https://img.shields.io/badge/GUI-wxWidgets-2A5DB0)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
-*Last updated: 16 Aug 2026*
+*Last updated: 25 Sep 2026*
 
-A small desktop app that lets you browse PDFs by topic.
+A small desktop app that lets you browse PDFs by topic. It was called **PDF Sherpa** until v2.4.0; an installed PDF Sherpa updates itself onto PDFBoss.
 
 - **Left pane** — lists every PDF under your top-level folders (up to five, managed with **Folders…**; a `./pdfs` subfolder by default). Each folder is its own heading, with subfolders nested beneath it.
 - **Middle pane** — when you select a PDF, shows the topics and page numbers from its companion metadata file (same base name, `.toc` or `.json`), with your own bookmarks in a resizable list above them.
@@ -21,22 +21,22 @@ A small desktop app that lets you browse PDFs by topic.
 
 ## Implementation
 
-**`PDFSherpaCpp/` is the app.** It is C++20 on wxWidgets and MuPDF, and it is what ships as `PDFSherpa-Setup.exe` and `PDFSherpa-Portable.zip`.
+**`PDFBossCpp/` is the app.** It is C++20 on wxWidgets and MuPDF, and it is what ships as `PDFBoss-Setup.exe` and `PDFBoss-Portable.zip`.
 
 The original Python/Tkinter implementation (`app.py`, `tocgen.py`) is **deprecated** and kept in-tree only as a historical reference. It is not built, packaged, or shipped, and its build path is guarded off — see [CLAUDE.md](CLAUDE.md). A difference between the two is not automatically a bug in the C++ app.
 
 Both read and write the same `%APPDATA%\PDFGuide\config.json`, and the same `.toc` / `.bookmarks.json` sidecars, so a profile written by either still works in the other.
 
 ## Screenshot
-<img width="1092" height="985" alt="PDFSherpa" src="https://github.com/user-attachments/assets/649ccef3-3849-4581-a10c-01aa30045e4d" />
+<img width="1092" height="985" alt="PDFBoss" src="https://github.com/user-attachments/assets/649ccef3-3849-4581-a10c-01aa30045e4d" />
 
 
 
 ## Run
 
 ```
-PDFSherpa.exe            # last chosen folder (or the ./pdfs subfolder)
-PDFSherpa.exe C:\docs    # or point it at any folder
+PDFBoss.exe            # last chosen folder (or the ./pdfs subfolder)
+PDFBoss.exe C:\docs    # or point it at any folder
 ```
 
 Use the **Folders…** button to manage up to five top-level folders. Each appears as its own heading in the PDF list with its subfolders nested beneath it, and the set is remembered and reopened on the next launch. A folder given on the command line is used for that session only and does not disturb the saved list.
@@ -44,12 +44,12 @@ Use the **Folders…** button to manage up to five top-level folders. Each appea
 ## Installing (Windows)
 
 Grab either flavor from the
-[latest release](https://github.com/Flinterpop/PDF_Sherpa/releases/latest):
+[latest release](https://github.com/Flinterpop/PDFBoss/releases/latest):
 
-- **`PDFSherpa-Setup.exe`** — a per-user installer (no admin rights needed):
+- **`PDFBoss-Setup.exe`** — a per-user installer (no admin rights needed):
   it installs the app, adds Start-Menu (and optional desktop) shortcuts, and
   registers an uninstaller.
-- **`PDFSherpa-Portable.zip`** — no install at all: unzip `PDFSherpa.exe`
+- **`PDFBoss-Portable.zip`** — no install at all: unzip `PDFBoss.exe`
   anywhere (a folder, a USB stick) and run it. Settings still live in
   `%APPDATA%\PDFGuide\config.json`.
 
@@ -75,17 +75,17 @@ push, publish the GitHub release, reinstall locally):
 Or do the steps by hand — build the exe, then compile the installer and zip the portable variant:
 
 ```
-cmake --preset windows-static                  # in PDFSherpaCpp\
-cmake --build build --config Release           # -> build\app\Release\PDFSherpa.exe
+cmake --preset windows-static                  # in PDFBossCpp\
+cmake --build build --config Release           # -> build\app\Release\PDFBoss.exe
 ctest --test-dir build -C Release              # the whole suite must be green
-iscc PDFSherpaCpp\installer-cpp.iss            # -> installer\PDFSherpa-Setup.exe
-powershell Compress-Archive -Force PDFSherpaCpp\build\app\Release\PDFSherpa.exe installer\PDFSherpa-Portable.zip
+iscc PDFBossCpp\installer-cpp.iss            # -> installer\PDFBoss-Setup.exe
+powershell Compress-Archive -Force PDFBossCpp\build\app\Release\PDFBoss.exe installer\PDFBoss-Portable.zip
 ```
 
 The compiled artifacts are not committed to the repo — publish them as GitHub Release assets (both names are what the in-app updater looks for, so keep them exact):
 
 ```
-gh release create v<version> installer\PDFSherpa-Setup.exe installer\PDFSherpa-Portable.zip
+gh release create v<version> installer\PDFBoss-Setup.exe installer\PDFBoss-Portable.zip
 ```
 
 ### Build prerequisites
@@ -100,10 +100,10 @@ gh release create v<version> installer\PDFSherpa-Setup.exe installer\PDFSherpa-P
 - **MuPDF 1.28.2**, extracted to `C:\source\mupdf` (override with `-DMUPDF_DIR=...`). It is not a vcpkg package and is deliberately not vendored into this repo — it is 190 MB of third-party source. Download `mupdf-1.28.2-source.tar.gz` from the [MuPDF archive](https://mupdf.com/downloads/archive/) and build it with:
 
   ```
-  msbuild platform/win32/mupdf.sln -t:libmupdf -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v145 -p:ForceImportBeforeCppTargets=<repo>\PDFSherpaCpp\third_party\mupdf-static-runtime.props
+  msbuild platform/win32/mupdf.sln -t:libmupdf -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v145 -p:ForceImportBeforeCppTargets=<repo>\PDFBossCpp\third_party\mupdf-static-runtime.props
   ```
 
-  That props file is what forces MuPDF onto the static CRT (`/MT`) and switches off the features PDF Sherpa never uses — OCR, barcodes, the non-PDF document handlers, and the CJK fallback fonts. Without it the executable is roughly 40 MB instead of 22 MB, and mixes two C runtimes. See `PDFSherpaCpp/cmake/MuPdf.cmake` for the details.
+  That props file is what forces MuPDF onto the static CRT (`/MT`) and switches off the features PDFBoss never uses — OCR, barcodes, the non-PDF document handlers, and the CJK fallback fonts. Without it the executable is roughly 40 MB instead of 22 MB, and mixes two C runtimes. See `PDFBossCpp/cmake/MuPdf.cmake` for the details.
 
 ## Metadata files
 
@@ -229,9 +229,9 @@ keyboard focus, so you can still navigate the lists with the keyboard.
 
 Released under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
-**Why AGPL and not MIT.** PDF Sherpa renders, searches and annotates PDFs with [MuPDF](https://mupdf.com/) (Artifex Software), which is licensed AGPL-3.0-or-later. The shipped executable links MuPDF statically, so the combined work is conveyed under the AGPL and this repository is licensed to match. Earlier releases carried an MIT notice while already bundling MuPDF through PyMuPDF; the licence was corrected when the C++ port made that linkage explicit. Section 13 (the network clause) has no practical effect here — PDF Sherpa is a desktop application and offers no service over a network — so in practice the obligation is simply that the corresponding source stays published, which it is, in this repository.
+**Why AGPL and not MIT.** PDFBoss renders, searches and annotates PDFs with [MuPDF](https://mupdf.com/) (Artifex Software), which is licensed AGPL-3.0-or-later. The shipped executable links MuPDF statically, so the combined work is conveyed under the AGPL and this repository is licensed to match. Earlier releases carried an MIT notice while already bundling MuPDF through PyMuPDF; the licence was corrected when the C++ port made that linkage explicit. Section 13 (the network clause) has no practical effect here — PDFBoss is a desktop application and offers no service over a network — so in practice the obligation is simply that the corresponding source stays published, which it is, in this repository.
 
-If you need PDF Sherpa under different terms, MuPDF is also available under a commercial licence from Artifex.
+If you need PDFBoss under different terms, MuPDF is also available under a commercial licence from Artifex.
 
 ### Third-party components
 

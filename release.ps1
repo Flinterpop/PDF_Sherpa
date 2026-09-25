@@ -1,5 +1,5 @@
 <#
-Release PDF Sherpa: bump the version everywhere, build the C++ app, the
+Release PDFBoss: bump the version everywhere, build the C++ app, the
 installer and the portable zip, commit and push the bump, publish a GitHub
 release with both assets, then reinstall locally.
 
@@ -11,7 +11,7 @@ Usage:
 
 Without -Notes/-NotesFile the GitHub notes are auto-generated from commits.
 
-Builds PDFSherpaCpp (C++20 / wxWidgets / MuPDF).  The Python app is deprecated
+Builds PDFBossCpp (C++20 / wxWidgets / MuPDF).  The Python app is deprecated
 and is NOT built here; its build path is guarded off deliberately, because it
 would produce the same two asset names and downgrade every install.
 
@@ -91,20 +91,20 @@ function Bump($path, $pattern, $replacement) {
                             (New-Object Text.UTF8Encoding($false)))
 }
 
-Bump "PDFSherpaCpp\app\Version.h" `
-     '#define PDFSHERPA_VERSION_STRING "[^"]+"' "#define PDFSHERPA_VERSION_STRING `"$Version`""
-Bump "PDFSherpaCpp\CMakeLists.txt" `
-     'project\(PDFSherpaCpp VERSION [0-9]+\.[0-9]+\.[0-9]+' "project(PDFSherpaCpp VERSION $Version"
+Bump "PDFBossCpp\app\Version.h" `
+     '#define PDFBOSS_VERSION_STRING "[^"]+"' "#define PDFBOSS_VERSION_STRING `"$Version`""
+Bump "PDFBossCpp\CMakeLists.txt" `
+     'project\(PDFBossCpp VERSION [0-9]+\.[0-9]+\.[0-9]+' "project(PDFBossCpp VERSION $Version"
 
 # The .rc carries the numeric tuples Explorer shows, which cannot reference a
 # string macro and so must be rewritten separately.  test_version.cpp asserts
 # they stay in step with Version.h.
 $tupleVersion = ($Version -replace '\.', ',') + ",0"
-Bump "PDFSherpaCpp\app\PDFSherpa.rc" `
+Bump "PDFBossCpp\app\PDFBoss.rc" `
      'FILEVERSION     [0-9]+,[0-9]+,[0-9]+,[0-9]+' "FILEVERSION     $tupleVersion"
-Bump "PDFSherpaCpp\app\PDFSherpa.rc" `
+Bump "PDFBossCpp\app\PDFBoss.rc" `
      'PRODUCTVERSION  [0-9]+,[0-9]+,[0-9]+,[0-9]+' "PRODUCTVERSION  $tupleVersion"
-Bump "PDFSherpaCpp\installer-cpp.iss" `
+Bump "PDFBossCpp\installer-cpp.iss" `
      '#define AppVersion "[^"]+"' "#define AppVersion `"$Version`""
 # Deprecated, still bumped -- see the note above.
 Bump "app.py"        'APP_VERSION = "[^"]+"'      "APP_VERSION = `"$Version`""
@@ -113,24 +113,24 @@ Bump "installer.iss" '#define AppVersion "[^"]+"' "#define AppVersion `"$Version
 # --- Build -------------------------------------------------------------------
 # A running instance holds a lock on the exe and the link fails with LNK1104,
 # which reads as "my change did nothing" rather than "close the app".
-$running = Get-Process PDFSherpa -ErrorAction SilentlyContinue
+$running = Get-Process PDFBoss -ErrorAction SilentlyContinue
 if ($running) {
-    Fail "PDF Sherpa is running (pid $($running.Id -join ', ')). Close it and re-run: it holds a lock on the exe and the link would fail with LNK1104."
+    Fail "PDFBoss is running (pid $($running.Id -join ', ')). Close it and re-run: it holds a lock on the exe and the link would fail with LNK1104."
 }
 
 Write-Host "==> Configuring (CMake)" -ForegroundColor Cyan
-cmake --preset windows-static -S PDFSherpaCpp
+cmake --preset windows-static -S PDFBossCpp
 CheckExit "cmake configure"
 
 Write-Host "==> Building (Release)" -ForegroundColor Cyan
-cmake --build PDFSherpaCpp\build --config Release
+cmake --build PDFBossCpp\build --config Release
 CheckExit "cmake build"
 
 Write-Host "==> Running tests" -ForegroundColor Cyan
-ctest --test-dir PDFSherpaCpp\build -C Release --output-on-failure
+ctest --test-dir PDFBossCpp\build -C Release --output-on-failure
 CheckExit "ctest"
 
-$exe = "PDFSherpaCpp\build\app\Release\PDFSherpa.exe"
+$exe = "PDFBossCpp\build\app\Release\PDFBoss.exe"
 if (-not (Test-Path $exe)) { Fail "expected build output missing: $exe" }
 
 # The shipped exe must need no VC++ redistributable.  Checked rather than
@@ -149,24 +149,46 @@ if ($dumpbin) {
 }
 
 Write-Host "==> Building installer (ISCC)" -ForegroundColor Cyan
-& $iscc "PDFSherpaCpp\installer-cpp.iss"
+& $iscc "PDFBossCpp\installer-cpp.iss"
 CheckExit "ISCC"
 
 Write-Host "==> Building portable zip" -ForegroundColor Cyan
 # HELP.md rides along: the Help window looks for it beside the exe, and a
 # portable copy without it answers F1 with "Help not found".
 Compress-Archive -Force -Path $exe, "HELP.md" `
+                 -DestinationPath "installer\PDFBoss-Portable.zip"
+
+# Rename bridge.  Every copy from before the rename (v2.3.0 and earlier) polls
+# the latest release for PDFSherpa-Setup.exe / PDFSherpa-Portable.zip, and a
+# release without them leaves those installs silently stranded.  So both are
+# shipped again under the old names, carrying the new app:
+#   - the setup is the same installer, byte for byte.  It keeps the old AppId,
+#     so it upgrades the existing install in place.
+#   - the zip must hold an exe named PDFSherpa.exe, because the old portable
+#     updater copies nothing unless it finds that exact name.  It is the new
+#     build, renamed.
+# Drop the bridge only once nobody can still be running a pre-rename copy.
+Write-Host "==> Building rename-bridge assets" -ForegroundColor Cyan
+Copy-Item -Force "installer\PDFBoss-Setup.exe" "installer\PDFSherpa-Setup.exe"
+$bridgeDir = "installer\bridge"
+if (Test-Path $bridgeDir) { Remove-Item -Recurse -Force $bridgeDir }
+New-Item -ItemType Directory -Force $bridgeDir | Out-Null
+Copy-Item $exe (Join-Path $bridgeDir "PDFSherpa.exe")
+Copy-Item "HELP.md" $bridgeDir
+Compress-Archive -Force -Path (Join-Path $bridgeDir "PDFSherpa.exe"), (Join-Path $bridgeDir "HELP.md") `
                  -DestinationPath "installer\PDFSherpa-Portable.zip"
 
-# Both asset names are load-bearing: the in-app updater matches them exactly.
-foreach ($asset in "installer\PDFSherpa-Setup.exe", "installer\PDFSherpa-Portable.zip") {
+# All four asset names are load-bearing: the in-app updaters match them exactly.
+$assets = @("installer\PDFBoss-Setup.exe", "installer\PDFBoss-Portable.zip",
+            "installer\PDFSherpa-Setup.exe", "installer\PDFSherpa-Portable.zip")
+foreach ($asset in $assets) {
     if (-not (Test-Path $asset)) { Fail "expected artifact missing: $asset" }
 }
 
 # --- Commit + push -----------------------------------------------------------
-git add PDFSherpaCpp\app\Version.h PDFSherpaCpp\app\PDFSherpa.rc `
-        PDFSherpaCpp\CMakeLists.txt `
-        PDFSherpaCpp\installer-cpp.iss app.py installer.iss
+git add PDFBossCpp\app\Version.h PDFBossCpp\app\PDFBoss.rc `
+        PDFBossCpp\CMakeLists.txt `
+        PDFBossCpp\installer-cpp.iss app.py installer.iss
 $staged = git diff --cached --name-only
 if ($staged) {
     git commit -m "Bump version to $Version"
@@ -183,9 +205,7 @@ CheckExit "git push"
 
 # --- Publish release ---------------------------------------------------------
 Write-Host "==> Publishing GitHub release v$Version" -ForegroundColor Cyan
-$ghArgs = @("release", "create", "v$Version",
-            "installer\PDFSherpa-Setup.exe", "installer\PDFSherpa-Portable.zip",
-            "--title", "v$Version")
+$ghArgs = @("release", "create", "v$Version") + $assets + @("--title", "v$Version")
 if ($NotesFile)  { $ghArgs += @("--notes-file", $NotesFile) }
 elseif ($Notes)  { $ghArgs += @("--notes", $Notes) }
 else             { $ghArgs += "--generate-notes" }
@@ -198,10 +218,14 @@ if (-not $SkipInstall) {
     # The installer now defaults to per-machine and asks, so a silent re-run
     # needs an explicit scope or it may land somewhere other than the existing
     # install.  /CURRENTUSER matches the historical per-user location.
-    Start-Process (Join-Path $PSScriptRoot "installer\PDFSherpa-Setup.exe") `
+    Start-Process (Join-Path $PSScriptRoot "installer\PDFBoss-Setup.exe") `
         -ArgumentList "/VERYSILENT", "/NORESTART", "/SUPPRESSMSGBOXES", "/CURRENTUSER" -Wait
-    $installed = "$env:LOCALAPPDATA\Programs\PDF Sherpa\PDFSherpa.exe"
-    if (Test-Path $installed) { Start-Process $installed }
+    # An install from before the rename keeps its "PDF Sherpa" folder (the
+    # installer reuses the previous directory), so look in both.
+    $installed = @("$env:LOCALAPPDATA\Programs\PDFBoss\PDFBoss.exe",
+                   "$env:LOCALAPPDATA\Programs\PDF Sherpa\PDFBoss.exe") |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($installed) { Start-Process $installed }
 }
 
-Write-Host "==> Done: https://github.com/Flinterpop/PDF_Sherpa/releases/tag/v$Version" -ForegroundColor Green
+Write-Host "==> Done: https://github.com/Flinterpop/PDFBoss/releases/tag/v$Version" -ForegroundColor Green

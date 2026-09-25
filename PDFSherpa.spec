@@ -35,7 +35,7 @@ a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('sherpaicon.ico', '.'), ('HELP.md', '.')],
+    datas=[('pdfboss.ico', '.'), ('HELP.md', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -81,5 +81,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['sherpaicon.ico'],
+    icon=['pdfboss.ico'],
 )

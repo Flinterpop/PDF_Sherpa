@@ -2791,14 +2791,14 @@ def _apply_window_icon(win) -> None:
     Windows uses the .ico via iconbitmap; everywhere else Tk ignores .ico, so
     fall back to the PNG via iconphoto (needs Pillow).  Never fatal."""
     if sys.platform == "win32":
-        ico = _resource_path("sherpaicon.ico")
+        ico = _resource_path("pdfboss.ico")
         if os.path.isfile(ico):
             try:
                 win.iconbitmap(ico)
                 return
             except tk.TclError:
                 pass
-    png = _resource_path("sherpapdf.png")
+    png = _resource_path("pdfboss.png")
     if Image is not None and ImageTk is not None and os.path.isfile(png):
         try:
             img = Image.open(png)

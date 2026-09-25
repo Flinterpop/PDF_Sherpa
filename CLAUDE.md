@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-*Last updated: 16 Aug 2026*
+*Last updated: 25 Sep 2026*
 
 Guidance for Claude Code working in this repository.
 
@@ -8,8 +8,8 @@ Guidance for Claude Code working in this repository.
 
 A topic-indexed PDF browser and annotator for Windows. Two implementations live here, but they are **not** peers:
 
-- **`PDFSherpaCpp/`** — C++20 on wxWidgets and MuPDF. **This is the reference implementation and the only thing that ships** (installer + portable zip). When something is ambiguous, the C++ app defines the behaviour.
-- **`app.py` + `tocgen.py`** — Python/Tkinter. **Deprecated.** Kept in-tree as a historical reference and parity record, but no longer the oracle, and not built, packaged, or shipped. Do not treat a difference from the Python app as a bug in the C++ app any more — if a change is wanted, it is made in `PDFSherpaCpp/` and the Python side is left alone. Touch `app.py`/`tocgen.py` only for an explicit request about the legacy app.
+- **`PDFBossCpp/`** — C++20 on wxWidgets and MuPDF. **This is the reference implementation and the only thing that ships** (installer + portable zip). When something is ambiguous, the C++ app defines the behaviour.
+- **`app.py` + `tocgen.py`** — Python/Tkinter. **Deprecated.** Kept in-tree as a historical reference and parity record, but no longer the oracle, and not built, packaged, or shipped. Do not treat a difference from the Python app as a bug in the C++ app any more — if a change is wanted, it is made in `PDFBossCpp/` and the Python side is left alone. Touch `app.py`/`tocgen.py` only for an explicit request about the legacy app.
 
 **The repo is public.** Everything here is world-readable the moment it is pushed. The app's own source is releasable; the *documents* it is used on (`C:\ICD`) are export-controlled and must never appear here, in a test fixture, or in a commit message.
 
@@ -23,11 +23,21 @@ Practical consequences:
 - Do not reintroduce an MIT badge or notice anywhere.
 - If a permissive licence is ever wanted back, the engine has to change (PDFium is BSD-3), not the label.
 
+## Renamed from PDF Sherpa to PDFBoss (v2.4.0) — the bridge is load-bearing
+
+The app, exe, installer, source tree (`PDFSherpaCpp/` → `PDFBossCpp/`), namespace and GitHub repo (`Flinterpop/PDF_Sherpa` → `Flinterpop/PDFBoss`) were all renamed in one go. Every copy of v2.3.0 and earlier still out there polls `…/PDF_Sherpa/releases/latest` (GitHub redirects it) for **`PDFSherpa-Setup.exe`** / **`PDFSherpa-Portable.zip`**, so three things keep them updating:
+
+- **`release.ps1` attaches both old asset names to every release**: the same installer copied, and a zip whose exe is named `PDFSherpa.exe` (the old portable updater copies nothing without that exact name). Drop it only when no pre-rename copy can still be running.
+- **`installer-cpp.iss` pins `AppId` to `PDF Sherpa`.** Inno took the id from `AppName` before, so this keeps the new installer the same product: it upgrades in place, in the old `PDF Sherpa` folder. Never change it.
+- **Where `{app}\PDFSherpa.exe` already exists, the installer refreshes it as a copy of the new build** instead of deleting it. The old updater's handoff batch relaunches that path after the silent install, and taskbar pins point at it; deleting it means the app closes and never comes back.
+
+`%APPDATA%\PDFGuide` is unaffected: it outlived the previous rename too. The words "Introduction to the Sherpa" in the test fixtures are baked into the committed PDFs and golden values; they are fixture text, not the app's name. The deprecated `app.py`, `tocgen.py`, `installer.iss`, `PDFSherpa.spec` and the session log `4July2026.txt` keep the old name as frozen history — only their icon paths moved.
+
 ## The deprecated Python build is guarded off, not merely unused
 
 `PDFSherpa.spec` exits unless `PDFSHERPA_BUILD_DEPRECATED_PYTHON` is set, and `installer.iss` refuses without `/DAllowDeprecatedPythonBuild`.
 
-This matters because both produce **`PDFSherpa-Setup.exe`** and **`PDFSherpa-Portable.zip`** — the exact two asset names every installed copy polls for. Regenerating one by accident and publishing it would silently "update" every install back onto the dead app. The overrides exist for local archaeology (bisecting an old bug, reproducing a past release); **never publish what they produce.**
+This matters because both produce **`PDFSherpa-Setup.exe`** and **`PDFSherpa-Portable.zip`** — the exact two asset names every pre-rename copy polls for, and which every release now carries as the rename bridge. Regenerating one by accident and publishing it would silently "update" every install back onto the dead app. The overrides exist for local archaeology (bisecting an old bug, reproducing a past release); **never publish what they produce.**
 
 Note this is the *opposite* rule from the version lockstep below: a deprecated file keeps getting its version bumped but must not be built.
 
@@ -47,13 +57,13 @@ Consequences worth knowing:
 
 One version number, bumped across every one of these in a single commit, always greater than the highest existing tag:
 
-`PDFSherpaCpp/app/Version.h` · `PDFSherpaCpp/CMakeLists.txt` (`project(... VERSION ...)`) · `PDFSherpaCpp/installer-cpp.iss` · `app.py` (`APP_VERSION`) · `installer.iss`
+`PDFBossCpp/app/Version.h` · `PDFBossCpp/CMakeLists.txt` (`project(... VERSION ...)`) · `PDFBossCpp/installer-cpp.iss` · `app.py` (`APP_VERSION`) · `installer.iss`
 
 `release.ps1 <version>` does all of it. The lockstep includes the deprecated files on purpose, so a resurrected file never reports a version that never shipped.
 
 ## Building
 
-MuPDF is **not** vendored and **not** a vcpkg package. It lives beside the repo at `C:\source\mupdf` and is consumed by absolute path — the same convention TacPlot uses for WireCodecs — because it is 190 MB of third-party source and this repo is public. `PDFSherpaCpp/cmake/MuPdf.cmake` pins **1.28.2** and warns at configure time if the tree disagrees.
+MuPDF is **not** vendored and **not** a vcpkg package. It lives beside the repo at `C:\source\mupdf` and is consumed by absolute path — the same convention TacPlot uses for WireCodecs — because it is 190 MB of third-party source and this repo is public. `PDFBossCpp/cmake/MuPdf.cmake` pins **1.28.2** and warns at configure time if the tree disagrees.
 
 Full prerequisites and the msbuild line are in [README.md](README.md). Two things about that build are easy to get wrong:
 
@@ -87,11 +97,11 @@ Two rules that fall out of this:
 - **All MuPDF calls stay in `PdfDocument.cpp`.** `fz_try`/`fz_catch` are `setjmp` macros: they trip C4611 (an error under `/W4 /WX`) in whatever translation unit expands them, and `longjmp` does not run destructors. The CMake dependency is `PRIVATE` to enforce this at build time.
 - **A running instance locks the exe** and the link fails with `LNK1104`, which reads as "my change did nothing". `release.ps1` checks and asks you to close it rather than killing it.
 - **`Set-Location` does not move .NET's working directory**, and `release.ps1` sets `[Environment]::CurrentDirectory` as well for that reason. `Bump()` pairs `Test-Path` (PowerShell — finds the file) with `[IO.File]::ReadAllText` (.NET — resolves the same relative path against wherever the shell *process* started), so running the script from a shell opened anywhere but the repo root killed it on the first version bump, with a `DirectoryNotFoundException` naming a path half from this repo and half from the start directory. Native tools invoked from here (`ISCC`) inherit the process directory too.
-- **A wxFrame does not inherit the exe's icon.** `PDFSherpa.rc` gives the executable one, so Explorer, the shortcut and the uninstall entry all looked right while the window itself wore the generic default — which is why this went unnoticed. `MainFrame` loads it as a *resource*, `icon.LoadFile("#1", wxBITMAP_TYPE_ICO_RESOURCE)`, `"#1"` being the ordinal the `.rc` assigns. Loading it as a file instead needs an ICO image handler registered and, without one, pops "No image handler for type 3 defined" at every launch.
+- **A wxFrame does not inherit the exe's icon.** `PDFBoss.rc` gives the executable one, so Explorer, the shortcut and the uninstall entry all looked right while the window itself wore the generic default — which is why this went unnoticed. `MainFrame` loads it as a *resource*, `icon.LoadFile("#1", wxBITMAP_TYPE_ICO_RESOURCE)`, `"#1"` being the ordinal the `.rc` assigns. Loading it as a file instead needs an ICO image handler registered and, without one, pops "No image handler for type 3 defined" at every launch.
 - **Driving this app from a script needs `SetProcessDPIAware()` first.** A DPI-unaware harness is handed virtualised coordinates: `GetWindowRect` answers in logical pixels while `CopyFromScreen` and `SetCursorPos` work in physical ones, so captures come out offset and scaled and clicks land on the wrong control. A click aimed at Refresh opened the Folders dialog instead.
 
 ## Testing
 
-`ctest --test-dir PDFSherpaCpp/build -C Release`. The suite is headless — `sherpa_core` deliberately excludes the GUI so tests neither link nor initialise wxWidgets.
+`ctest --test-dir PDFBossCpp/build -C Release`. The suite is headless — `pdfboss_core` deliberately excludes the GUI so tests neither link nor initialise wxWidgets.
 
 The `tests/fixture*.pdf` files are **synthetic**, generated by `tests/make_fixture.py`, and committed so the build is hermetic. They exist so no test ever depends on a controlled document. `tests/tocgen_oracle.py` regenerates the golden values in `test_tocgen.cpp` by running the Python `tocgen.py` — pin `pymupdf==1.28.2` when doing so, since that is the release wrapping the MuPDF the C++ side links, and comparing across engine versions proves nothing.

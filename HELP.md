@@ -1,4 +1,4 @@
-# PDF Sherpa — Help
+# PDFBoss — Help
 
 *Last updated: 16 Aug 2026*
 
@@ -6,7 +6,7 @@ Vibe Coded with Claude Code using Fable 5
 
 B. Graham - July 2026
 
-PDF Sherpa lets you browse a folder of PDFs **by topic** and read them in a built-in viewer.
+PDFBoss lets you browse a folder of PDFs **by topic** and read them in a built-in viewer.
 
 ## The three panes
 
@@ -34,7 +34,7 @@ If a file of that name is already in the inbox you are asked whether to replace 
 
 ## Topic (.toc) files
 
-Every PDF can have a companion topics file with the same base name — for example `manual.pdf` pairs with `manual.toc`. If a PDF has none, it shows as `(no metadata)`. Press **Refresh** (or `F5`) and choose to build topic lists: Sherpa reads each PDF's built-in outline bookmarks (not your own `Ctrl+B` bookmarks), or falls back to detecting headings from the text when there are none.
+Every PDF can have a companion topics file with the same base name — for example `manual.pdf` pairs with `manual.toc`. If a PDF has none, it shows as `(no metadata)`. Press **Refresh** (or `F5`) and choose to build topic lists: PDFBoss reads each PDF's built-in outline bookmarks (not your own `Ctrl+B` bookmarks), or falls back to detecting headings from the text when there are none.
 
 Building a topic list means reading text from **every page**, so a batch of large documents takes a while. A progress dialog shows which file is being read and how far through the batch it is, and **Cancel** stops after the file in progress — the lists already built are kept, and pressing **Refresh** again picks up where it left off, since only PDFs still without a topics file are offered.
 
@@ -64,7 +64,7 @@ by hand. Deleting the last bookmark removes the file, and saving highlights as a
 
 ## Choosing folders
 
-Use **Folders…** to manage the top-level folders Sherpa shows — you can have up to five, and each appears as its own heading at the top of the PDF list with its subfolders nested beneath it. In the dialog you can **Add** a folder, **Rename** it (the name is just a label, so a long path can read as *ICDs* or *Manuals*), reorder it with **Move up** / **Move down**, or **Remove** it. Removing a folder only stops Sherpa listing it; nothing on disk is touched.
+Use **Folders…** to manage the top-level folders PDFBoss shows — you can have up to five, and each appears as its own heading at the top of the PDF list with its subfolders nested beneath it. In the dialog you can **Add** a folder, **Rename** it (the name is just a label, so a long path can read as *ICDs* or *Manuals*), reorder it with **Move up** / **Move down**, or **Remove** it. Removing a folder only stops PDFBoss listing it; nothing on disk is touched.
 
 The order matters in one place: a PDF dropped on the window is filed into the `inbox` of whichever folder the currently selected PDF belongs to, falling back to the first folder in the list when nothing is selected.
 
@@ -90,10 +90,10 @@ selection**. Highlights are standard PDF annotations, so they show up in any PDF
 
 Changes are kept in memory until you save. The **Save** button (or `Ctrl+S`) asks where to put them: **Yes** saves an annotated copy alongside the
 original — `manual.pdf` becomes `manual(ann).pdf`, with the topics and bookmarks files copied too — while **No** writes into the original file. Saving while
-viewing an `(ann)` copy just updates it, no questions asked. If you switch PDFs or close the app with unsaved highlights, Sherpa asks whether to save
+viewing an `(ann)` copy just updates it, no questions asked. If you switch PDFs or close the app with unsaved highlights, PDFBoss asks whether to save
 them. To remove a highlight, right-click it and choose **Remove highlight**, then save.
 
-Notes: scanned PDFs without a text layer have nothing to select, and saving highlights into a digitally signed PDF may invalidate its signature (Sherpa
+Notes: scanned PDFs without a text layer have nothing to select, and saving highlights into a digitally signed PDF may invalidate its signature (PDFBoss
 warns first).
 
 ## Viewer controls
@@ -123,7 +123,7 @@ Arrow, space, and page keys defer to the PDF and topic lists while one of them h
 
 ## Updates
 
-A couple of seconds after launch Sherpa quietly checks GitHub for a newer release (it never interrupts you when you're up to date or
+A couple of seconds after launch PDFBoss quietly checks GitHub for a newer release (it never interrupts you when you're up to date or
 offline). When one is found you get three choices: **Yes** downloads the update and applies it in place — the app restarts on the new version by itself;
 **No** skips that version for good (you'll be asked again for the next one); **Cancel** just reminds you on the next launch. On **Windows** this works for both the
 installed copy (it re-runs the installer silently) and the portable copy (it swaps the exe where it sits, even on a USB stick).
@@ -135,4 +135,4 @@ To turn the launch check off entirely, add `"check_updates": false` to your conf
 
 ## More
 
-Project page: [github.com/Flinterpop/PDF_Sherpa](https://github.com/Flinterpop/PDF_Sherpa)
+Project page: [github.com/Flinterpop/PDFBoss](https://github.com/Flinterpop/PDFBoss)
