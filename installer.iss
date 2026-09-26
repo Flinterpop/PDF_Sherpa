@@ -17,7 +17,7 @@
 #endif
 
 #define AppName "PDF Sherpa"
-#define AppVersion "2.3.0"
+#define AppVersion "2.4.0"
 #define AppExe "PDFSherpa.exe"
 
 [Setup]
