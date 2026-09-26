@@ -46,6 +46,21 @@ function CheckExit($what) {
     if ($LASTEXITCODE -ne 0) { Fail "$what failed (exit $LASTEXITCODE)" }
 }
 
+# Every native tool goes through this.  Windows PowerShell 5.1 turns each
+# line a native command writes to stderr into an ErrorRecord whenever that
+# stream is redirected -- including when the CALLER runs this whole script
+# with `*>` or `2>&1` into a log -- and under the "Stop" above the first one
+# is fatal.  git's "LF will be replaced by CRLF" warning on `git add` killed
+# the v2.4.0 release that way, after the build and the artifacts but before
+# the commit.  Native tools report failure through their exit code, which
+# CheckExit reads, so their stderr is relaxed to non-fatal here and only
+# here; cmdlets everywhere else still stop on error.
+function Native {
+    $ErrorActionPreference = "Continue"   # function scope: restored on return
+    $exe, $rest = $args
+    & $exe @rest
+}
+
 # --- Preflight ---------------------------------------------------------------
 # Inno Setup has moved between homes on this machine, so try each in turn
 # rather than trusting one path. %LOCALAPPDATA% is NOT among them: the
@@ -74,7 +89,7 @@ if (-not (Test-Path $mupdfLib)) {
     Fail "MuPDF is not built: $mupdfLib is missing.`nSee the build prerequisites in README.md."
 }
 
-$dirty = git status --porcelain
+$dirty = Native git status --porcelain
 if ($dirty) { Fail "working tree not clean -- commit or stash first:`n$dirty" }
 
 # --- Bump versions -----------------------------------------------------------
@@ -119,15 +134,15 @@ if ($running) {
 }
 
 Write-Host "==> Configuring (CMake)" -ForegroundColor Cyan
-cmake --preset windows-static -S PDFBossCpp
+Native cmake --preset windows-static -S PDFBossCpp
 CheckExit "cmake configure"
 
 Write-Host "==> Building (Release)" -ForegroundColor Cyan
-cmake --build PDFBossCpp\build --config Release
+Native cmake --build PDFBossCpp\build --config Release
 CheckExit "cmake build"
 
 Write-Host "==> Running tests" -ForegroundColor Cyan
-ctest --test-dir PDFBossCpp\build -C Release --output-on-failure
+Native ctest --test-dir PDFBossCpp\build -C Release --output-on-failure
 CheckExit "ctest"
 
 $exe = "PDFBossCpp\build\app\Release\PDFBoss.exe"
@@ -140,7 +155,7 @@ $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\18\Community\
     -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -match 'HostX64\\x64' } | Select-Object -First 1
 if ($dumpbin) {
-    $deps = & $dumpbin.FullName /nologo /dependents $exe
+    $deps = Native $dumpbin.FullName /nologo /dependents $exe
     $bad = $deps | Select-String -Pattern 'VCRUNTIME|MSVCP\d|api-ms-win-crt'
     if ($bad) { Fail "exe depends on the VC++ runtime:`n$bad" }
     Write-Host "    static CRT verified" -ForegroundColor DarkGray
@@ -149,7 +164,7 @@ if ($dumpbin) {
 }
 
 Write-Host "==> Building installer (ISCC)" -ForegroundColor Cyan
-& $iscc "PDFBossCpp\installer-cpp.iss"
+Native $iscc "PDFBossCpp\installer-cpp.iss"
 CheckExit "ISCC"
 
 Write-Host "==> Building portable zip" -ForegroundColor Cyan
@@ -186,21 +201,22 @@ foreach ($asset in $assets) {
 }
 
 # --- Commit + push -----------------------------------------------------------
-git add PDFBossCpp\app\Version.h PDFBossCpp\app\PDFBoss.rc `
+Native git add PDFBossCpp\app\Version.h PDFBossCpp\app\PDFBoss.rc `
         PDFBossCpp\CMakeLists.txt `
         PDFBossCpp\installer-cpp.iss app.py installer.iss
-$staged = git diff --cached --name-only
+CheckExit "git add"
+$staged = Native git diff --cached --name-only
 if ($staged) {
-    git commit -m "Bump version to $Version"
+    Native git commit -m "Bump version to $Version"
     CheckExit "git commit"
 } else {
     Write-Host "==> Versions already at $Version, nothing to commit" -ForegroundColor Yellow
 }
 
 Write-Host "==> Syncing with origin (README is sometimes edited on the web)" -ForegroundColor Cyan
-git pull --rebase origin main
+Native git pull --rebase origin main
 CheckExit "git pull --rebase"
-git push origin main
+Native git push origin main
 CheckExit "git push"
 
 # --- Publish release ---------------------------------------------------------
@@ -209,7 +225,7 @@ $ghArgs = @("release", "create", "v$Version") + $assets + @("--title", "v$Versio
 if ($NotesFile)  { $ghArgs += @("--notes-file", $NotesFile) }
 elseif ($Notes)  { $ghArgs += @("--notes", $Notes) }
 else             { $ghArgs += "--generate-notes" }
-& gh @ghArgs
+Native gh @ghArgs
 CheckExit "gh release create"
 
 # --- Local reinstall ---------------------------------------------------------
