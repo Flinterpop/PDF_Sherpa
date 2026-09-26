@@ -159,6 +159,10 @@ private:
     struct Context;
     Context* context_ = nullptr;
     void* document_ = nullptr;  // fz_document*
+    // UTF-8, as MuPDF takes it.  save_incremental() appends to this file:
+    // MuPDF's incremental save needs the path spelled out, and throws "no
+    // output to write to" when it is given none.
+    std::string path_utf8_;
     bool dirty_ = false;
     mutable std::string last_error_;
 };

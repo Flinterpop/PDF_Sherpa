@@ -254,6 +254,45 @@ TEST_CASE("highlights round-trip through a saved copy", "[pdf][annot]")
     fs::remove(copy, ec);
 }
 
+TEST_CASE("highlights save back into the original file", "[pdf][annot]")
+{
+    // "No -- save into manual.pdf" in the viewer's prompt.  save_incremental()
+    // passed MuPDF no path and failed every time with "no output to write
+    // to"; nothing tested it, because the (ann) copy test goes through
+    // save_as().
+    const fs::path original =
+        fs::temp_directory_path() / "pdfboss_highlight_incremental.pdf";
+    std::error_code ec;
+    fs::remove(original, ec);
+    fs::copy_file(fixture(), original, ec);
+    REQUIRE_FALSE(ec);
+    const auto size_before = fs::file_size(original, ec);
+
+    float cx = 0.0F;
+    float cy = 0.0F;
+    {
+        PdfDocument doc;
+        REQUIRE(doc.open(original));
+        std::vector<pdfboss::Word> words;
+        REQUIRE(doc.page_words(0, &words));
+        REQUIRE_FALSE(words.empty());
+        cx = (words[0].rect.x0 + words[0].rect.x1) / 2.0F;
+        cy = (words[0].rect.y0 + words[0].rect.y1) / 2.0F;
+        REQUIRE(doc.add_highlight(0, {words[0].rect}));
+        INFO(doc.last_error());
+        REQUIRE(doc.save_incremental());
+        CHECK_FALSE(doc.dirty());
+    }
+    // Appended, not rewritten: the file only grew.
+    CHECK(fs::file_size(original, ec) > size_before);
+
+    PdfDocument reopened;
+    REQUIRE(reopened.open(original));
+    CHECK(reopened.remove_highlight_at(0, cx, cy));
+    reopened.close();
+    fs::remove(original, ec);
+}
+
 TEST_CASE("removing a highlight where there is none reports false", "[pdf][annot]")
 {
     PdfDocument doc;

@@ -129,6 +129,7 @@ bool PdfDocument::open(const std::filesystem::path& path)
     }
 
     document_ = doc;
+    path_utf8_ = utf8;
     dirty_ = false;
     last_error_.clear();
     return document_ != nullptr;
@@ -140,6 +141,7 @@ void PdfDocument::close()
         fz_drop_document(context_->ctx, static_cast<fz_document*>(document_));
     }
     document_ = nullptr;
+    path_utf8_.clear();
     dirty_ = false;
 }
 
@@ -615,11 +617,19 @@ bool PdfDocument::save_incremental()
         return false;
     }
 
+    // The path is spelled out.  It used to be nullptr, which MuPDF answers
+    // with "no output to write to" -- so "save highlights into the original"
+    // failed every time; only the "(ann)" copy, which goes through save_as(),
+    // ever worked.  Incremental mode opens the file for APPEND and writes only
+    // the changes after the existing bytes, which is what makes writing back
+    // into the file that is still open safe.
+    assert(!path_utf8_.empty() && "an open document knows its path");
+    const char* const target = path_utf8_.c_str();
     bool ok = false;
     fz_try(ctx) {
         pdf_write_options options = pdf_default_write_options;
         options.do_incremental = 1;
-        pdf_save_document(ctx, pdf, nullptr, &options);
+        pdf_save_document(ctx, pdf, target, &options);
         ok = true;
     }
     fz_catch(ctx) {
