@@ -72,6 +72,13 @@ Full prerequisites and the msbuild line are in [README.md](README.md). Two thing
 
 Everything else comes from vcpkg in **classic** mode. Do not add a `vcpkg.json`: it switches the toolchain to manifest mode and rebuilds wxWidgets from source for no gain.
 
+## This tree is also an upstream: DocBoss compiles parts of it
+
+**DocBoss** (`C:\source\DocBoss`) compiles `PdfDocument`, `TocGen`, `Metadata`, `ViewerPane`, `TopicsPane`, `ProgressJob` and `PathUtf8` straight out of `PDFBossCpp/app/`, and includes `PDFBossCpp/cmake/MuPdf.cmake`, by absolute path, pinned by `PDFBOSS_EXPECTED_COMMIT` in its `CMakeLists.txt` (the RadarFusion-from-TacPlot pattern). `DocBoss/CLAUDE.md` holds the list. Two consequences here:
+
+- **A new `#include` in one of those units breaks DocBoss at link time, not here.** DocBoss lists the `.cpp` files it compiles; a pulled unit that starts depending on a sibling it does not list leaves undefined symbols. Today all of them are leaves apart from each other and `PathUtf8`, and none touches `Config`, `Updater` or `Version.h` -- keep it that way, because each of those carries PDFBoss's own identity.
+- **They share one binary with MD Boss's units**, which is safe only because the two apps' code lives in different namespaces (`pdfboss::` and `mdboss::`) with different include guards. Both have a `PathUtf8`; both are compiled. Do not move anything out of `pdfboss::`.
+
 ## Nothing that touches the filesystem in bulk runs on the UI thread
 
 `ViewerPane::start_search` set the shape and everything else now follows it: a worker thread, an atomic generation counter the worker polls so a superseded result is discarded rather than applied out of order, an `alive_` flag the destructor clears so a completion lambda can tell the pane is gone, and results applied only through `CallAfter`. The whole worker body is wrapped in `try/catch`, because an uncaught exception on a detached thread is a silent `std::terminate` — exit code `0xC0000409`, no dialog.
