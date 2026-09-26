@@ -74,7 +74,7 @@ Everything else comes from vcpkg in **classic** mode. Do not add a `vcpkg.json`:
 
 ## This tree is also an upstream: DocBoss compiles parts of it
 
-**DocBoss** (`C:\source\DocBoss`) compiles `PdfDocument`, `TocGen`, `Metadata`, `ViewerPane`, `TopicsPane`, `ProgressJob` and `PathUtf8` straight out of `PDFBossCpp/app/`, and includes `PDFBossCpp/cmake/MuPdf.cmake`, by absolute path, pinned by `PDFBOSS_EXPECTED_COMMIT` in its `CMakeLists.txt` (the RadarFusion-from-TacPlot pattern). `DocBoss/CLAUDE.md` holds the list. Two consequences here:
+**DocBoss** (`C:\source\DocBoss`) compiles `PdfDocument`, `TocGen`, `Metadata`, `ViewerPane`, `TopicsPane` and `PathUtf8` straight out of `PDFBossCpp/app/`, and includes `PDFBossCpp/cmake/MuPdf.cmake`, by absolute path, pinned by `PDFBOSS_EXPECTED_COMMIT` in its `cmake/Siblings.cmake`. `DocBoss/CLAUDE.md` holds the list. Two consequences here:
 
 - **A new `#include` in one of those units breaks DocBoss at link time, not here.** DocBoss lists the `.cpp` files it compiles; a pulled unit that starts depending on a sibling it does not list leaves undefined symbols. Today all of them are leaves apart from each other and `PathUtf8`, and none touches `Config`, `Updater` or `Version.h` -- keep it that way, because each of those carries PDFBoss's own identity.
 - **They share one binary with MD Boss's units**, which is safe only because the two apps' code lives in different namespaces (`pdfboss::` and `mdboss::`) with different include guards. Both have a `PathUtf8`; both are compiled. Do not move anything out of `pdfboss::`.
